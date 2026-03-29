@@ -1,0 +1,7 @@
+# Build artefacts
+bin/
+dist/
+*.exe
+
+# Env files
+.env
