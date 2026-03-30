@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  repository_dispatch:
+    types: [tag-created]
 
 permissions:
   contents: write
@@ -15,23 +15,32 @@ jobs:
         goos: [linux, darwin, windows]
         goarch: [amd64, arm64]
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout código
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.client_payload.tag }}
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+
       - name: Build binary
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          TAG: ${{ github.event.client_payload.tag }}
         run: |
           out="dist/tracesql-${GOOS}-${GOARCH}"
           if [ "$GOOS" = "windows" ]; then out="$out.exe"; fi
           mkdir -p dist
           go build -trimpath -ldflags "-s -w" -o "$out" ./cmd/tracesql
-      - name: Upload asset
+
+      - name: Publicar assets na Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event.client_payload.tag }}
           files: dist/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

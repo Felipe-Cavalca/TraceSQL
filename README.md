@@ -32,6 +32,10 @@ Suite de ferramentas para inspecionar e exportar dados relacionais (MySQL, Postg
 - Unitários: `go test ./...` (CI roda em matriz ubuntu/macos/windows).
 - Integração planejada: usar Docker Compose para MySQL/Postgres quando a lógica de relacionamento for adicionada.
 
+## Publicação
+- Workflow `Release` é disparado por `repository_dispatch` com `type: tag-created` e `client_payload.tag` apontando para a tag a ser publicada.
+- Ele compila binários para linux/macos/windows (amd64/arm64) e anexa à release da tag correspondente.
+
 ## Estrutura atual
 ```
 cmd/tracesql/main.go      # entrada do comando Cobra
