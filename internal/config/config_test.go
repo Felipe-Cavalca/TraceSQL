@@ -10,15 +10,18 @@ import (
 func TestDefaultFromEnv(t *testing.T) {
 	t.Setenv("TRACESQL_DRIVER", "postgres")
 	t.Setenv("TRACESQL_DSN", "postgres://user:pass@localhost/db")
-	t.Setenv("TRACESQL_TABLE", "users")
-	t.Setenv("TRACESQL_COLUMN", "uuid")
-	t.Setenv("TRACESQL_RECORD", "abc")
 	t.Setenv("TRACESQL_NEW_IDS", "true")
 
 	cfg := config.Default()
 
-	if cfg.Driver != "postgres" || cfg.DSN == "" || cfg.Table != "users" {
-		t.Fatalf("env n?o aplicado corretamente: %+v", cfg)
+	if cfg.Driver != "postgres" || cfg.DSN == "" {
+		t.Fatalf("env não aplicado corretamente: %+v", cfg)
+	}
+	if cfg.Table != "" || cfg.Record != "" {
+		t.Fatalf("table/record não deveriam vir do env: %+v", cfg)
+	}
+	if cfg.Column != "id" {
+		t.Fatalf("coluna padrão deveria ser id, obtido %s", cfg.Column)
 	}
 	if !cfg.NewIDs {
 		t.Fatalf("flag de novos IDs deveria estar true")

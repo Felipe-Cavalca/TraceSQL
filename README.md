@@ -47,10 +47,9 @@ configs/.env.example      # template de configuração
 1) Preencha `configs/.env.example` e salve como `.env` (ou exporte as variáveis):  
    - `TRACESQL_DRIVER` (postgres | mysql | sqlite)  
    - `TRACESQL_DSN` (ex.: `postgres://user:pass@localhost:5432/db`)  
-   - `TRACESQL_TABLE` e `TRACESQL_COLUMN` (padrão `id`)  
-   - `TRACESQL_RECORD` (valor do registro)  
    - `TRACESQL_NEW_IDS` (`true` para omitir a coluna de referência no INSERT)  
-2) Rode `go run ./cmd/tracesql` ou o binário baixado. Campos ausentes serão perguntados no terminal.  
+   - `TRACESQL_OUT` (opcional: caminho do arquivo de saída)  
+2) Rode `go run ./cmd/tracesql` ou o binário baixado. Campos ausentes (tabela/coluna/registro) serão perguntados no terminal.  
 3) O dump sai em `export_<tabela>_<registro>.sql` (ou caminho passado via `--out`).  
 
 ## Ambiente de desenvolvimento

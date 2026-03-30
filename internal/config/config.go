@@ -24,9 +24,7 @@ func Default() Config {
 	return Config{
 		Driver:  getEnv("TRACESQL_DRIVER", ""),
 		DSN:     getEnv("TRACESQL_DSN", ""),
-		Table:   getEnv("TRACESQL_TABLE", ""),
-		Column:  getEnv("TRACESQL_COLUMN", "id"),
-		Record:  getEnv("TRACESQL_RECORD", ""),
+		Column:  "id",
 		OutFile: getEnv("TRACESQL_OUT", ""),
 		NewIDs:  strings.EqualFold(getEnv("TRACESQL_NEW_IDS", "false"), "true"),
 	}
