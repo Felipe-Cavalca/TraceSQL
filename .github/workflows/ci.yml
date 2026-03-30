@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   test:
     runs-on: ${{ matrix.os }}
@@ -28,3 +32,24 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
       - name: Test
         run: go test ./...
+
+  notify:
+    if: github.event_name == 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comentar status no PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const conclusion = "${{ needs.test.result }}";
+            const ok = conclusion === "success";
+            const message = ok
+              ? "✅ CI: testes passaram em ubuntu/macos/windows."
+              : "❌ CI: testes falharam. Veja os logs em Actions.";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: message
+            });
