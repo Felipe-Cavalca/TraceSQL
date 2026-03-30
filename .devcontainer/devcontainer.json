@@ -1,0 +1,12 @@
+{
+  "name": "TraceSQL Go",
+  "containerName": "dev-tracesql",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.Go"]
+    }
+  }
+}
