@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, codex/** ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+      - name: Test
+        run: go test ./...
+
+  notify:
+    if: github.event_name == 'pull_request'
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Comentar status no PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const conclusion = "${{ needs.test.result }}";
+            const ok = conclusion === "success";
+            const message = ok
+              ? "✅ CI: testes passaram em ubuntu/macos/windows."
+              : "❌ CI: testes falharam. Veja os logs em Actions.";
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: message
+            });
