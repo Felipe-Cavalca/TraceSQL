@@ -1,0 +1,7 @@
+/dist
+/bin
+*.exe
+*.dll
+*.so
+*.dylib
+.env
