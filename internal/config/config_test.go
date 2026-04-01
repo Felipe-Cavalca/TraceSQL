@@ -9,6 +9,7 @@ import (
 
 func TestDefaultFromEnv(t *testing.T) {
 	t.Setenv("TRACESQL_DRIVER", "postgres")
+	t.Setenv("TRACESQL_OUTPUT_DRIVER", "mysql")
 	t.Setenv("TRACESQL_DSN", "postgres://user:pass@localhost/db")
 	t.Setenv("TRACESQL_NEW_IDS", "true")
 
@@ -16,6 +17,9 @@ func TestDefaultFromEnv(t *testing.T) {
 
 	if cfg.Driver != "postgres" || cfg.DSN == "" {
 		t.Fatalf("env não aplicado corretamente: %+v", cfg)
+	}
+	if cfg.OutputDriver != "mysql" {
+		t.Fatalf("output driver não aplicado corretamente: %+v", cfg)
 	}
 	if cfg.Table != "" || cfg.Record != "" {
 		t.Fatalf("table/record não deveriam vir do env: %+v", cfg)
@@ -64,10 +68,13 @@ func TestNormalize(t *testing.T) {
 }
 
 func TestEnsureDefaults(t *testing.T) {
-	cfg := config.Config{}
+	cfg := config.Config{Driver: "sqlite"}
 	cfg.EnsureDefaults()
 	if cfg.Column != "id" {
 		t.Fatalf("coluna padr?o deveria ser id, obtido %s", cfg.Column)
+	}
+	if cfg.OutputDriver != "sqlite" {
+		t.Fatalf("output driver padrão deveria seguir o driver, obtido %s", cfg.OutputDriver)
 	}
 
 	os.Unsetenv("TRACESQL_COLUMN")
