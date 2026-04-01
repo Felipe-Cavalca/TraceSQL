@@ -1,67 +1,96 @@
 ﻿# TraceSQL
 
-Suite de ferramentas para inspecionar e exportar dados relacionais (MySQL, PostgreSQL e bancos em arquivo). A visão de longo prazo inclui uma extensão VS Code; começamos por um utilitário de terminal multiplataforma.
+`TraceSQL` é um CLI em Go para exportar um registro e o seu grafo relacional para um arquivo `.sql`. Ele conecta em bancos `postgres`, `mysql` ou `sqlite`, descobre relacionamentos por chave estrangeira, gera o schema das tabelas envolvidas e escreve os `INSERT`s no dialeto de saída escolhido.
 
-## Fase 1 – CLI de exportação
-- Alvo: Windows, Linux e macOS, distribuído como binário único nas Releases do GitHub.
-- Linguagem escolhida: Go 1.22+ (binário estático, sem runtime externo e boa portabilidade).
-- Entrada: conexão via variáveis de ambiente (.env) ou parâmetros no prompt. Pergunta interativamente se algo estiver faltando.
-- Fluxo atual: escolher banco/tabela, coluna de referência (padrão `id`), registro a exportar, o dialeto de saída e se os IDs devem ser preservados ou regenerados. Gera um `.sql` com `CREATE TABLE` + `INSERTs` do grafo relacionado.
-- Saída: arquivo `.sql` nomeado como `export_<tabela>_<registro>.sql` (ou caminho informado via flag/ENV).
+O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.md](ROADMAP.md).
 
-## Roadmap resumido
-1) CLI de exportação em Go (atual).
-2) Bibliotecar lógica de relacionamento/export para reuso.
-3) Extensão VS Code consumindo a biblioteca.
-4) Automatizar publicações em Release.
+## O que o projeto faz
+- Exporta um registro base a partir de `tabela`, `coluna` e `valor`.
+- Descobre relações pai/filho via foreign keys e inclui os registros conectados.
+- Gera `CREATE TABLE IF NOT EXISTS` e `INSERT`s no dialeto `postgres`, `mysql` ou `sqlite`.
+- Permite manter os IDs originais ou regenerá-los quando a tabela usa chave primária auto increment.
+- Aceita configuração por `.env`, flags e prompts interativos no terminal.
 
-## Requisitos funcionais
-- Conexão com MySQL, PostgreSQL e SQLite.
-- Respeitar credenciais vindas de `.env` para evitar prompts repetitivos.
-- Descobrir relações (FKs) em SQLite, PostgreSQL e MySQL para trazer registros relacionados.
-- Gerar SQL para recriar schema e dados exportados, inclusive com origem e destino em bancos diferentes.
+## Requisitos
+- Para uso normal, baixe o binário da Release compatível com seu sistema.
+- Go 1.22+ é necessário apenas se você quiser rodar o projeto a partir do código-fonte.
+- Um DSN válido para o banco de origem.
+- Banco de origem suportado: `postgres`, `mysql` ou `sqlite`.
 
-## Stack técnica (Go)
-- Drivers: `pgx` (PostgreSQL), `go-sql-driver/mysql` e `glebarez/sqlite` (sem CGO).
-- CLI: `spf13/cobra` para comandos e prompts simples.
-- Configuração: `.env` lido com `godotenv` + flags.
-- Build: `go build -trimpath -ldflags="-s -w" ./cmd/tracesql` gerando binário estático.
-- Distribuição: workflow de Release compila e anexa binários (linux-amd64/arm64, windows-amd64/arm64, darwin-amd64/arm64).
+## Como usar
+1. Baixe na aba Releases o binário compatível com seu sistema. Os assets seguem o padrão `tracesql-<os>-<arch>`, por exemplo `tracesql-linux-amd64`, `tracesql-darwin-arm64` ou `tracesql-windows-amd64.exe`.
+2. Em Linux ou macOS, dê permissão de execução ao arquivo com `chmod +x <binario>`.
+3. Copie `configs/.env.example` para `.env` e ajuste os valores necessários, ou exporte as variáveis manualmente.
+4. Execute o binário. Se algum dado não for informado, o CLI pergunta no terminal. Se a coluna não for passada, o padrão é `id`.
+5. O arquivo será salvo como `export_<tabela>_<registro>.sql`, a menos que você informe `--out`.
 
-## Testes
-- Unitários: `go test ./...` (CI roda em matriz ubuntu/macos/windows).
-- Integração planejada: usar Docker Compose para MySQL/Postgres quando a lógica de relacionamento for adicionada.
+### Exemplo com binário
 
-## Publicação
-- Workflow `Release` é disparado por `repository_dispatch` com `type: tag-created` e `client_payload.tag` apontando para a tag a ser publicada.
-- Ele compila binários para linux/macos/windows (amd64/arm64) e anexa à release da tag correspondente.
-
-## Estrutura atual
-```
-cmd/tracesql/main.go      # entrada do comando Cobra
-internal/config/          # leitura/env/flags
-internal/db/              # abertura de conexão por driver
-internal/export/          # geração de INSERT simples
-internal/metadata/        # placeholder para descoberta de FKs
-internal/prompt/          # perguntas interativas
-configs/.env.example      # template de configuração
+```bash
+./tracesql-linux-amd64 \
+  --driver postgres \
+  --dsn 'postgres://user:pass@localhost:5432/app' \
+  --table orders \
+  --column id \
+  --record 10 \
+  --output-driver mysql \
+  --out ./tmp/orders_10.sql
 ```
 
-## Uso rápido
-1) Preencha `configs/.env.example` e salve como `.env` (ou exporte as variáveis):  
-   - `TRACESQL_DRIVER` (postgres | mysql | sqlite)  
-   - `TRACESQL_DSN` (ex.: `postgres://user:pass@localhost:5432/db`)  
-   - `TRACESQL_OUTPUT_DRIVER` (opcional: postgres | mysql | sqlite; padrão = mesmo driver da origem)  
-   - `TRACESQL_NEW_IDS` (`true` para omitir a coluna de referência no INSERT)  
-   - `TRACESQL_OUT` (opcional: caminho do arquivo de saída)  
-2) Rode `go run ./cmd/tracesql` ou o binário baixado. Campos ausentes (tabela/coluna/registro) serão perguntados no terminal.  
-3) O dump sai em `export_<tabela>_<registro>.sql` (ou caminho passado via `--out`).  
+### Exemplo interativo
 
-## Ambiente de desenvolvimento
-- Dev Container Go em `.devcontainer/` (Go 1.22, SQLite dev, clientes MySQL/Postgres, Docker socket montado para testes).
-- Requisitos locais mínimos: Docker instalado para usar o devcontainer; fora dele, basta Go 1.22+ se não precisar rodar os bancos locais.
+```bash
+./tracesql-linux-amd64
+```
 
-## Próximos passos
-- Evoluir exportação para incluir relações (FKs) e múltiplas tabelas.
-- Adicionar testes de integração com Docker Compose.
-- Incluir lint/format (golangci-lint) na CI.
+Se algum campo obrigatório não for informado por flag, o CLI pergunta no terminal:
+- driver
+- dsn
+- tabela de origem
+- coluna de referência
+- valor do registro
+- se deve gerar novos IDs
+
+## Executando a partir do código-fonte
+
+Se você estiver desenvolvendo no projeto, também pode rodar localmente com:
+
+```bash
+go run ./cmd/tracesql
+```
+
+## Flags disponíveis
+
+| Flag | Obrigatória | Descrição |
+| --- | --- | --- |
+| `--driver` | Sim | Driver do banco de origem: `postgres`, `mysql` ou `sqlite`. |
+| `--dsn` | Sim | String de conexão do banco de origem. |
+| `--table` | Sim | Tabela inicial da exportação. |
+| `--record` | Sim | Valor do registro que será usado como ponto de partida. |
+| `--column` | Não | Coluna de referência usada no filtro inicial. Padrão: `id`. |
+| `--output-driver` | Não | Dialeto SQL de saída. Padrão: mesmo driver da origem. |
+| `--out` | Não | Caminho do arquivo `.sql` gerado. |
+| `--new-ids` | Não | Omite a chave de referência dos `INSERT`s para gerar novos IDs quando suportado. |
+| `--log` | Não | Escreve logs de execução no `stderr`. |
+
+## Variáveis de ambiente suportadas
+
+O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
+
+| Variável | Descrição |
+| --- | --- |
+| `TRACESQL_DRIVER` | Mesmo valor da flag `--driver`. |
+| `TRACESQL_DSN` | Mesmo valor da flag `--dsn`. |
+| `TRACESQL_OUTPUT_DRIVER` | Mesmo valor da flag `--output-driver`. |
+| `TRACESQL_NEW_IDS` | Mesmo valor da flag `--new-ids`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
+| `TRACESQL_OUT` | Mesmo valor da flag `--out`. |
+| `TRACESQL_LOG` | Mesmo valor da flag `--log`. |
+
+## Saída gerada
+- Nome padrão: `export_<tabela>_<registro>.sql`.
+- Conteúdo: `CREATE TABLE IF NOT EXISTS` seguido dos `INSERT`s das linhas exportadas.
+- Quando `--new-ids` está ativo, o TraceSQL cria mapeamentos temporários para preservar referências entre tabelas relacionadas.
+
+## Desenvolvimento
+- Dev Container em `.devcontainer/` com Go 1.22, SQLite, clientes MySQL/Postgres e Docker socket para testes.
+- Testes automatizados: `go test ./...`.
