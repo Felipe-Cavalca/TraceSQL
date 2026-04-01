@@ -16,17 +16,17 @@ func FillMissing(cfg *config.Config, in io.Reader, out io.Writer) error {
 	cfg.Normalize()
 	cfg.EnsureDefaults()
 
-	if cfg.Driver == "" {
+	if !cfg.DriverProvided() && cfg.Driver == "" {
 		fmt.Fprint(out, "Driver (postgres/mysql/sqlite): ")
 		d, _ := reader.ReadString('\n')
 		cfg.Driver = strings.TrimSpace(d)
 	}
-	if cfg.DSN == "" {
+	if !cfg.DSNProvided() && cfg.DSN == "" {
 		fmt.Fprint(out, "DSN de conex?o: ")
 		d, _ := reader.ReadString('\n')
 		cfg.DSN = strings.TrimSpace(d)
 	}
-	if cfg.Table == "" {
+	if !cfg.TableProvided() && cfg.Table == "" {
 		fmt.Fprint(out, "Tabela de origem: ")
 		d, _ := reader.ReadString('\n')
 		cfg.Table = strings.TrimSpace(d)
@@ -34,22 +34,24 @@ func FillMissing(cfg *config.Config, in io.Reader, out io.Writer) error {
 	if cfg.Column == "" {
 		cfg.Column = "id"
 	}
-	if cfg.Column == "id" {
-		fmt.Fprintf(out, "Coluna de refer?ncia [id]: ")
-	} else {
-		fmt.Fprintf(out, "Coluna de refer?ncia [%s]: ", cfg.Column)
-	}
-	if c, _ := reader.ReadString('\n'); strings.TrimSpace(c) != "" {
-		cfg.Column = strings.TrimSpace(c)
+	if !cfg.ColumnProvided() {
+		if cfg.Column == "id" {
+			fmt.Fprintf(out, "Coluna de refer?ncia [id]: ")
+		} else {
+			fmt.Fprintf(out, "Coluna de refer?ncia [%s]: ", cfg.Column)
+		}
+		if c, _ := reader.ReadString('\n'); strings.TrimSpace(c) != "" {
+			cfg.Column = strings.TrimSpace(c)
+		}
 	}
 
-	if cfg.Record == "" {
+	if !cfg.RecordProvided() && cfg.Record == "" {
 		fmt.Fprintf(out, "Valor do registro (%s): ", cfg.Column)
 		d, _ := reader.ReadString('\n')
 		cfg.Record = strings.TrimSpace(d)
 	}
 
-	if !cfg.NewIDs {
+	if !cfg.NewIDsProvided() {
 		fmt.Fprint(out, "Gerar novos IDs? (s/N): ")
 		resp, _ := reader.ReadString('\n')
 		resp = strings.TrimSpace(strings.ToLower(resp))
@@ -57,5 +59,6 @@ func FillMissing(cfg *config.Config, in io.Reader, out io.Writer) error {
 	}
 
 	cfg.Normalize()
+	cfg.EnsureDefaults()
 	return nil
 }

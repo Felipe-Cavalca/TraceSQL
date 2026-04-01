@@ -6,7 +6,7 @@ Suite de ferramentas para inspecionar e exportar dados relacionais (MySQL, Postg
 - Alvo: Windows, Linux e macOS, distribuído como binário único nas Releases do GitHub.
 - Linguagem escolhida: Go 1.22+ (binário estático, sem runtime externo e boa portabilidade).
 - Entrada: conexão via variáveis de ambiente (.env) ou parâmetros no prompt. Pergunta interativamente se algo estiver faltando.
-- Fluxo atual: escolher banco/tabela, coluna de referência (padrão `id`), registro a exportar e se os IDs devem ser preservados ou regenerados. Gera um `.sql` com o `INSERT` correspondente.
+- Fluxo atual: escolher banco/tabela, coluna de referência (padrão `id`), registro a exportar, o dialeto de saída e se os IDs devem ser preservados ou regenerados. Gera um `.sql` com `CREATE TABLE` + `INSERTs` do grafo relacionado.
 - Saída: arquivo `.sql` nomeado como `export_<tabela>_<registro>.sql` (ou caminho informado via flag/ENV).
 
 ## Roadmap resumido
@@ -18,8 +18,8 @@ Suite de ferramentas para inspecionar e exportar dados relacionais (MySQL, Postg
 ## Requisitos funcionais
 - Conexão com MySQL, PostgreSQL e SQLite.
 - Respeitar credenciais vindas de `.env` para evitar prompts repetitivos.
-- (Em progresso) Descobrir relações (FKs) para trazer tabelas relacionadas.
-- Gerar SQL de insert idempotente para recriar dados exportados, com opção de preservar IDs ou deixar o banco gerar novos.
+- Descobrir relações (FKs) em SQLite, PostgreSQL e MySQL para trazer registros relacionados.
+- Gerar SQL para recriar schema e dados exportados, inclusive com origem e destino em bancos diferentes.
 
 ## Stack técnica (Go)
 - Drivers: `pgx` (PostgreSQL), `go-sql-driver/mysql` e `glebarez/sqlite` (sem CGO).
@@ -51,6 +51,7 @@ configs/.env.example      # template de configuração
 1) Preencha `configs/.env.example` e salve como `.env` (ou exporte as variáveis):  
    - `TRACESQL_DRIVER` (postgres | mysql | sqlite)  
    - `TRACESQL_DSN` (ex.: `postgres://user:pass@localhost:5432/db`)  
+   - `TRACESQL_OUTPUT_DRIVER` (opcional: postgres | mysql | sqlite; padrão = mesmo driver da origem)  
    - `TRACESQL_NEW_IDS` (`true` para omitir a coluna de referência no INSERT)  
    - `TRACESQL_OUT` (opcional: caminho do arquivo de saída)  
 2) Rode `go run ./cmd/tracesql` ou o binário baixado. Campos ausentes (tabela/coluna/registro) serão perguntados no terminal.  
