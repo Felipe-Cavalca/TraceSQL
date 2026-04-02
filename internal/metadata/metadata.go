@@ -98,6 +98,99 @@ func (c Catalog) TableNames() []string {
 	return names
 }
 
+func (c Catalog) WithNameInferredForeignKeys() (Catalog, int) {
+	if len(c.tables) == 0 {
+		return c, 0
+	}
+
+	exactTables := make(map[string]string, len(c.tables))
+	aliasCandidates := map[string][]string{}
+	for _, table := range c.tables {
+		lowerName := strings.ToLower(table.Name)
+		exactTables[lowerName] = table.Name
+		for _, alias := range tableNameAliases(lowerName) {
+			aliasCandidates[alias] = appendUnique(aliasCandidates[alias], table.Name)
+		}
+	}
+
+	foreignKeys := append([]ForeignKey(nil), c.ForeignKeys...)
+	existing := map[string]struct{}{}
+	columnsWithRelations := map[string]struct{}{}
+	for _, fk := range foreignKeys {
+		existing[foreignKeyKey(fk)] = struct{}{}
+		columnsWithRelations[strings.ToLower(fk.Table)+"."+strings.ToLower(fk.Column)] = struct{}{}
+	}
+
+	added := 0
+	for _, tableName := range c.TableNames() {
+		table, ok := c.Table(tableName)
+		if !ok {
+			continue
+		}
+
+		for _, column := range table.Columns {
+			columnName := strings.ToLower(column.Name)
+			if !strings.HasSuffix(columnName, "_id") {
+				continue
+			}
+			if _, exists := columnsWithRelations[strings.ToLower(table.Name)+"."+columnName]; exists {
+				continue
+			}
+
+			refAlias := strings.TrimSuffix(columnName, "_id")
+			refTableName, ok := inferReferenceTable(refAlias, exactTables, aliasCandidates)
+			if !ok {
+				continue
+			}
+
+			refTable, ok := c.Table(refTableName)
+			if !ok || !hasPrimaryKeyColumn(refTable, "id") {
+				continue
+			}
+
+			fk := ForeignKey{
+				Table:     table.Name,
+				Column:    column.Name,
+				RefTable:  refTable.Name,
+				RefColumn: "id",
+			}
+			key := foreignKeyKey(fk)
+			if _, exists := existing[key]; exists {
+				continue
+			}
+
+			existing[key] = struct{}{}
+			columnsWithRelations[strings.ToLower(table.Name)+"."+columnName] = struct{}{}
+			foreignKeys = append(foreignKeys, fk)
+			added++
+		}
+	}
+
+	if added == 0 {
+		return c, 0
+	}
+
+	sort.Slice(foreignKeys, func(i, j int) bool {
+		left := foreignKeys[i]
+		right := foreignKeys[j]
+		if left.Table != right.Table {
+			return left.Table < right.Table
+		}
+		if left.Column != right.Column {
+			return left.Column < right.Column
+		}
+		if left.RefTable != right.RefTable {
+			return left.RefTable < right.RefTable
+		}
+		return left.RefColumn < right.RefColumn
+	})
+
+	return Catalog{
+		tables:      c.tables,
+		ForeignKeys: foreignKeys,
+	}, added
+}
+
 func (t Table) PrimaryKeyColumns() []string {
 	var cols []string
 	for _, col := range t.Columns {
@@ -106,6 +199,51 @@ func (t Table) PrimaryKeyColumns() []string {
 		}
 	}
 	return cols
+}
+
+func hasPrimaryKeyColumn(table Table, columnName string) bool {
+	for _, column := range table.Columns {
+		if strings.EqualFold(column.Name, columnName) && column.PrimaryKey {
+			return true
+		}
+	}
+	return false
+}
+
+func inferReferenceTable(alias string, exactTables map[string]string, aliasCandidates map[string][]string) (string, bool) {
+	if tableName, ok := exactTables[alias]; ok {
+		return tableName, true
+	}
+
+	candidates := aliasCandidates[alias]
+	if len(candidates) != 1 {
+		return "", false
+	}
+	return candidates[0], true
+}
+
+func tableNameAliases(name string) []string {
+	aliases := []string{name}
+	switch {
+	case strings.HasSuffix(name, "ies") && len(name) > 3:
+		aliases = append(aliases, name[:len(name)-3]+"y")
+	case strings.HasSuffix(name, "s") && len(name) > 1:
+		aliases = append(aliases, strings.TrimSuffix(name, "s"))
+	}
+	return aliases
+}
+
+func appendUnique(values []string, value string) []string {
+	for _, existing := range values {
+		if existing == value {
+			return values
+		}
+	}
+	return append(values, value)
+}
+
+func foreignKeyKey(fk ForeignKey) string {
+	return strings.ToLower(fk.Table) + "|" + strings.ToLower(fk.Column) + "|" + strings.ToLower(fk.RefTable) + "|" + strings.ToLower(fk.RefColumn)
 }
 
 type inspector interface {

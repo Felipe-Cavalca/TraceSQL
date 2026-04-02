@@ -1,12 +1,13 @@
 ﻿# TraceSQL
 
-`TraceSQL` é um CLI em Go para exportar um registro e o seu grafo relacional para um arquivo `.sql`. Ele conecta em bancos `postgres`, `mysql` ou `sqlite`, descobre relacionamentos por chave estrangeira, gera o schema das tabelas envolvidas e escreve os `INSERT`s no dialeto de saída escolhido.
+`TraceSQL` é um CLI em Go para exportar um registro e o seu grafo relacional para um arquivo `.sql`. Ele conecta em bancos `postgres`, `mysql` ou `sqlite`, descobre relacionamentos por chave estrangeira e também pode inferi-los por nome, gera o schema das tabelas envolvidas e escreve os `INSERT`s no dialeto de saída escolhido.
 
 O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.md](ROADMAP.md).
 
 ## O que o projeto faz
 - Exporta um registro base a partir de `tabela`, `coluna` e `valor`.
 - Descobre relações pai/filho via foreign keys e inclui os registros conectados.
+- Opcionalmente infere relações pelo padrão `[tabela]_id`, útil quando o banco não tem foreign keys declaradas.
 - Gera `CREATE TABLE IF NOT EXISTS` e `INSERT`s no dialeto `postgres`, `mysql` ou `sqlite`.
 - Permite manter os IDs originais ou regenerá-los quando a tabela usa chave primária auto increment.
 - Aceita configuração por `.env`, flags e prompts interativos no terminal.
@@ -84,6 +85,7 @@ go run ./cmd/tracesql
 | `--output-driver` | Não | Dialeto SQL de saída. Padrão: mesmo driver da origem. |
 | `--out` | Não | Caminho do arquivo `.sql` gerado. |
 | `--new-ids` | Não | Omite a chave de referência dos `INSERT`s para gerar novos IDs quando suportado. |
+| `--relations-by-name` | Não | Infere relações pelo padrão `[tabela]_id` e adiciona essas referências ao grafo exportado. |
 | `--log` | Não | Escreve logs de execução no `stderr`. |
 
 ## Variáveis de ambiente suportadas
@@ -101,6 +103,7 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 | `TRACESQL_DATABASE` | Mesmo valor da flag `--database`. |
 | `TRACESQL_OUTPUT_DRIVER` | Mesmo valor da flag `--output-driver`. |
 | `TRACESQL_NEW_IDS` | Mesmo valor da flag `--new-ids`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
+| `TRACESQL_RELATIONS_BY_NAME` | Mesmo valor da flag `--relations-by-name`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
 | `TRACESQL_OUT` | Mesmo valor da flag `--out`. |
 | `TRACESQL_LOG` | Mesmo valor da flag `--log`. |
 
@@ -108,6 +111,7 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Nome padrão: `export_<tabela>_<registro>.sql`.
 - Conteúdo: `CREATE TABLE IF NOT EXISTS` seguido dos `INSERT`s das linhas exportadas.
 - Quando `--new-ids` está ativo, o TraceSQL cria mapeamentos temporários para preservar referências entre tabelas relacionadas.
+- Quando `--relations-by-name` está ativo, o TraceSQL também tenta relacionar tabelas por colunas no formato `[tabela]_id`, sem substituir foreign keys reais já existentes.
 
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.22, SQLite, clientes MySQL/Postgres e Docker socket para testes.

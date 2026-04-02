@@ -123,3 +123,54 @@ func TestDiscoverMySQL(t *testing.T) {
 		t.Fatalf("expectativas não atendidas: %v", err)
 	}
 }
+
+func TestWithNameInferredForeignKeys(t *testing.T) {
+	catalog := Catalog{
+		tables: map[string]Table{
+			"users": {
+				Name: "users",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+					{Name: "name"},
+				},
+			},
+			"orders": {
+				Name: "orders",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+					{Name: "user_id"},
+					{Name: "total"},
+				},
+			},
+			"audit_logs": {
+				Name: "audit_logs",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+					{Name: "user_id"},
+				},
+			},
+		},
+		ForeignKeys: []ForeignKey{
+			{Table: "audit_logs", Column: "user_id", RefTable: "users", RefColumn: "id"},
+		},
+	}
+
+	updated, inferred := catalog.WithNameInferredForeignKeys()
+	if inferred != 1 {
+		t.Fatalf("esperava 1 relação inferida, obtive %d", inferred)
+	}
+	if len(updated.ForeignKeys) != 2 {
+		t.Fatalf("esperava 2 relações no total, obtive %+v", updated.ForeignKeys)
+	}
+
+	expected := ForeignKey{Table: "orders", Column: "user_id", RefTable: "users", RefColumn: "id"}
+	found := false
+	for _, fk := range updated.ForeignKeys {
+		if fk == expected {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("relação inferida não encontrada: %+v", updated.ForeignKeys)
+	}
+}

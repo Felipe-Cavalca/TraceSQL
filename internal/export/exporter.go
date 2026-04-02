@@ -34,7 +34,7 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 	cfg.Normalize()
 	cfg.EnsureDefaults()
 	logf := newTraceLogger(cfg.Log)
-	logf("iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs)
+	logf("iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs, cfg.RelationsByName)
 
 	baseRows, err := queryRowsByValue(ctx, db, cfg.Driver, cfg.Table, cfg.Column, cfg.Record, logf)
 	if err != nil {
@@ -50,6 +50,11 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 		return "", fmt.Errorf("descobrindo metadata: %w", err)
 	}
 	logf("metadata descoberta: %d tabelas e %d foreign keys", len(catalog.TableNames()), len(catalog.ForeignKeys))
+	if cfg.RelationsByName {
+		var inferred int
+		catalog, inferred = catalog.WithNameInferredForeignKeys()
+		logf("relações por nome habilitadas: %d relações inferidas (%d total)", inferred, len(catalog.ForeignKeys))
+	}
 
 	if tableMeta, ok := catalog.Table(cfg.Table); ok {
 		cfg.Table = tableMeta.Name
