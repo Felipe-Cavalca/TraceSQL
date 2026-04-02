@@ -11,7 +11,7 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 - Permite limitar a profundidade da exportação relacional: omitido = todo o grafo, `0` = só o registro base, `1` = primeiro nível de pais/filhos, e assim por diante.
 - Permite ignorar tabelas por sufixo, como `_log`, para não trazer tabelas de log ao percorrer as relações.
 - Gera `CREATE TABLE IF NOT EXISTS` e `INSERT`s no dialeto `postgres`, `mysql` ou `sqlite`.
-- Permite manter os IDs originais ou regenerá-los quando a tabela usa chave primária auto increment.
+- Permite manter os IDs originais ou regenerá-los quando a tabela tem uma chave primária inteira simples.
 - Aceita configuração por `.env`, flags e prompts interativos no terminal.
 
 ## Requisitos
@@ -88,7 +88,7 @@ go run ./cmd/tracesql
 | `--column` | Não | Coluna de referência usada no filtro inicial. Padrão: `id`. |
 | `--output-driver` | Não | Dialeto SQL de saída. Padrão: mesmo driver da origem. |
 | `--out` | Não | Caminho do arquivo `.sql` gerado. |
-| `--new-ids` | Não | Omite a chave de referência dos `INSERT`s para gerar novos IDs quando suportado. |
+| `--new-ids` | Não | Omite a chave primária inteira simples dos `INSERT`s para gerar novos IDs e preservar as referências no dump. |
 | `--relations-by-name` | Não | Infere relações pelo padrão `[tabela]_id` e adiciona essas referências ao grafo exportado. |
 | `--depth` | Não | Limita quantos níveis de relações serão percorridos. Omitido = ilimitado, `0` = só o registro base, `1` = primeiro nível de pais/filhos. |
 | `--ignore-table-suffix` | Não | Ignora tabelas cujo nome termina com o sufixo informado, como `_log`. A tabela inicial continua sendo exportada mesmo que combine com o sufixo. |
