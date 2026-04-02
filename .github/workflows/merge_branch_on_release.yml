@@ -4,6 +4,9 @@ on:
   release:
     types: [published, edited]
 
+permissions:
+  contents: write
+
 jobs:
   update_latest_release_branch:
     if: github.event.release.prerelease == false && github.event.release.draft == false
