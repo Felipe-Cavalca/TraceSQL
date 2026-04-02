@@ -46,7 +46,12 @@ func main() {
 			}
 			logf("configuração validada")
 
-			database, err := db.Open(cfg.Driver, cfg.DSN)
+			dsn, err := cfg.ConnectionString()
+			if err != nil {
+				return err
+			}
+
+			database, err := db.Open(cfg.Driver, dsn)
 			if err != nil {
 				return err
 			}
