@@ -4,6 +4,9 @@ on:
   pull_request:
     types: [closed]
 
+permissions:
+  contents: write
+
 jobs:
   create_tag_and_draft_release:
     runs-on: ubuntu-latest
