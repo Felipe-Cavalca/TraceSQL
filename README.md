@@ -8,8 +8,10 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 - Exporta um registro base a partir de `tabela`, `coluna` e `valor`.
 - Descobre relações pai/filho via foreign keys e inclui os registros conectados.
 - Opcionalmente infere relações pelo padrão `[tabela]_id`, útil quando o banco não tem foreign keys declaradas.
+- Permite limitar a profundidade da exportação relacional: omitido = todo o grafo, `0` = só o registro base, `1` = primeiro nível de pais/filhos, e assim por diante.
+- Permite ignorar tabelas por sufixo, como `_log`, para não trazer tabelas de log ao percorrer as relações.
 - Gera `CREATE TABLE IF NOT EXISTS` e `INSERT`s no dialeto `postgres`, `mysql` ou `sqlite`.
-- Permite manter os IDs originais ou regenerá-los quando a tabela usa chave primária auto increment.
+- Permite manter os IDs originais ou regenerá-los quando a tabela tem uma chave primária inteira simples.
 - Aceita configuração por `.env`, flags e prompts interativos no terminal.
 
 ## Requisitos
@@ -38,6 +40,8 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
   --table orders \
   --column id \
   --record 10 \
+  --depth 1 \
+  --ignore-table-suffix _log \
   --output-driver mysql \
   --out ./tmp/orders_10.sql
 ```
@@ -84,8 +88,10 @@ go run ./cmd/tracesql
 | `--column` | Não | Coluna de referência usada no filtro inicial. Padrão: `id`. |
 | `--output-driver` | Não | Dialeto SQL de saída. Padrão: mesmo driver da origem. |
 | `--out` | Não | Caminho do arquivo `.sql` gerado. |
-| `--new-ids` | Não | Omite a chave de referência dos `INSERT`s para gerar novos IDs quando suportado. |
+| `--new-ids` | Não | Omite a chave primária inteira simples dos `INSERT`s para gerar novos IDs e preservar as referências no dump. |
 | `--relations-by-name` | Não | Infere relações pelo padrão `[tabela]_id` e adiciona essas referências ao grafo exportado. |
+| `--depth` | Não | Limita quantos níveis de relações serão percorridos. Omitido = ilimitado, `0` = só o registro base, `1` = primeiro nível de pais/filhos. |
+| `--ignore-table-suffix` | Não | Ignora tabelas cujo nome termina com o sufixo informado, como `_log`. A tabela inicial continua sendo exportada mesmo que combine com o sufixo. |
 | `--log` | Não | Escreve logs de execução no `stderr`. |
 
 ## Variáveis de ambiente suportadas
@@ -104,6 +110,8 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 | `TRACESQL_OUTPUT_DRIVER` | Mesmo valor da flag `--output-driver`. |
 | `TRACESQL_NEW_IDS` | Mesmo valor da flag `--new-ids`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
 | `TRACESQL_RELATIONS_BY_NAME` | Mesmo valor da flag `--relations-by-name`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
+| `TRACESQL_DEPTH` | Mesmo valor da flag `--depth`. Quando ausente, o TraceSQL percorre todo o grafo relacional. |
+| `TRACESQL_IGNORE_TABLE_SUFFIX` | Mesmo valor da flag `--ignore-table-suffix`. |
 | `TRACESQL_OUT` | Mesmo valor da flag `--out`. |
 | `TRACESQL_LOG` | Mesmo valor da flag `--log`. |
 
@@ -112,6 +120,8 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Conteúdo: `CREATE TABLE IF NOT EXISTS` seguido dos `INSERT`s das linhas exportadas.
 - Quando `--new-ids` está ativo, o TraceSQL cria mapeamentos temporários para preservar referências entre tabelas relacionadas.
 - Quando `--relations-by-name` está ativo, o TraceSQL também tenta relacionar tabelas por colunas no formato `[tabela]_id`, sem substituir foreign keys reais já existentes.
+- Quando `--depth` não é informado, o TraceSQL percorre o grafo inteiro a partir do registro inicial.
+- Quando `--ignore-table-suffix` é informado, tabelas com esse final são removidas da travessia e do schema gerado.
 
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.22, SQLite, clientes MySQL/Postgres e Docker socket para testes.

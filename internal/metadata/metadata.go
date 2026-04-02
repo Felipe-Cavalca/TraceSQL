@@ -98,6 +98,35 @@ func (c Catalog) TableNames() []string {
 	return names
 }
 
+func (c Catalog) FilterTables(keep func(string) bool) Catalog {
+	if keep == nil || len(c.tables) == 0 {
+		return c
+	}
+
+	filteredTables := make(map[string]Table, len(c.tables))
+	for key, table := range c.tables {
+		if keep(table.Name) {
+			filteredTables[key] = table
+		}
+	}
+
+	filteredForeignKeys := make([]ForeignKey, 0, len(c.ForeignKeys))
+	for _, fk := range c.ForeignKeys {
+		if _, ok := filteredTables[strings.ToLower(fk.Table)]; !ok {
+			continue
+		}
+		if _, ok := filteredTables[strings.ToLower(fk.RefTable)]; !ok {
+			continue
+		}
+		filteredForeignKeys = append(filteredForeignKeys, fk)
+	}
+
+	return Catalog{
+		tables:      filteredTables,
+		ForeignKeys: filteredForeignKeys,
+	}
+}
+
 func (c Catalog) WithNameInferredForeignKeys() (Catalog, int) {
 	if len(c.tables) == 0 {
 		return c, 0

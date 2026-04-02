@@ -34,7 +34,18 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 	cfg.Normalize()
 	cfg.EnsureDefaults()
 	logf := newTraceLogger(cfg.Log)
-	logf("iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs, cfg.RelationsByName)
+	logf(
+		"iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t depth=%s ignore_table_suffix=%q",
+		cfg.Driver,
+		cfg.OutputDriver,
+		cfg.Table,
+		cfg.Column,
+		cfg.Record,
+		cfg.NewIDs,
+		cfg.RelationsByName,
+		cfg.DepthLabel(),
+		cfg.IgnoreTableSuffix,
+	)
 
 	baseRows, err := queryRowsByValue(ctx, db, cfg.Driver, cfg.Table, cfg.Column, cfg.Record, logf)
 	if err != nil {
@@ -50,15 +61,17 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 		return "", fmt.Errorf("descobrindo metadata: %w", err)
 	}
 	logf("metadata descoberta: %d tabelas e %d foreign keys", len(catalog.TableNames()), len(catalog.ForeignKeys))
+	if tableMeta, ok := catalog.Table(cfg.Table); ok {
+		cfg.Table = tableMeta.Name
+	}
+	catalog = filterCatalog(catalog, cfg)
+	logf("metadata filtrada: %d tabelas e %d foreign keys", len(catalog.TableNames()), len(catalog.ForeignKeys))
 	if cfg.RelationsByName {
 		var inferred int
 		catalog, inferred = catalog.WithNameInferredForeignKeys()
 		logf("relações por nome habilitadas: %d relações inferidas (%d total)", inferred, len(catalog.ForeignKeys))
 	}
 
-	if tableMeta, ok := catalog.Table(cfg.Table); ok {
-		cfg.Table = tableMeta.Name
-	}
 	for i := range baseRows {
 		baseRows[i].table = cfg.Table
 	}
@@ -87,7 +100,16 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 			return "", fmt.Errorf("metadata ausente para a tabela %s", tableName)
 		}
 		logf("gerando schema da tabela %s", tableName)
-		builder.WriteString(buildCreateTable(cfg.OutputDriver, tableMeta, foreignKeysForTable(catalog, exportedTables, tableName)))
+		builder.WriteString(buildCreateTable(
+			cfg.OutputDriver,
+			tableMeta,
+			foreignKeysForTable(catalog, exportedTables, tableName),
+			mappingPrimaryKey(mappings, tableName),
+		))
+	}
+
+	if cfg.NewIDs && len(mappings) == 0 {
+		logf("new_ids solicitado, mas nenhuma tabela elegível foi encontrada (é preciso ter PK simples inteira)")
 	}
 
 	if cfg.NewIDs {
@@ -136,14 +158,24 @@ type scannedRow struct {
 	index map[string]int
 }
 
+type queuedRow struct {
+	row   scannedRow
+	depth int
+}
+
 func collectRows(ctx context.Context, db *sql.DB, cfg config.Config, catalog metadata.Catalog, baseRows []scannedRow, logf traceLogger) (map[string][]scannedRow, error) {
-	queue := append([]scannedRow(nil), baseRows...)
+	queue := make([]queuedRow, 0, len(baseRows))
+	for _, row := range baseRows {
+		queue = append(queue, queuedRow{row: row, depth: 0})
+	}
 	rowsByTable := map[string][]scannedRow{}
 	seen := map[string]struct{}{}
+	maxDepth, limitedDepth := cfg.DepthLimit()
 
 	for len(queue) > 0 {
-		row := queue[0]
+		item := queue[0]
 		queue = queue[1:]
+		row := item.row
 
 		tableMeta, ok := catalog.Table(row.table)
 		if ok {
@@ -157,14 +189,33 @@ func collectRows(ctx context.Context, db *sql.DB, cfg config.Config, catalog met
 		seen[identity] = struct{}{}
 		rowsByTable[row.table] = append(rowsByTable[row.table], row)
 
+		if limitedDepth && item.depth >= maxDepth {
+			continue
+		}
+
 		relatedRows, err := relatedRowsForRow(ctx, db, cfg.Driver, catalog, row, logf)
 		if err != nil {
 			return nil, err
 		}
-		queue = append(queue, relatedRows...)
+		for _, relatedRow := range relatedRows {
+			queue = append(queue, queuedRow{row: relatedRow, depth: item.depth + 1})
+		}
 	}
 
 	return rowsByTable, nil
+}
+
+func filterCatalog(catalog metadata.Catalog, cfg config.Config) metadata.Catalog {
+	if strings.TrimSpace(cfg.IgnoreTableSuffix) == "" {
+		return catalog
+	}
+
+	return catalog.FilterTables(func(tableName string) bool {
+		if strings.EqualFold(tableName, cfg.Table) {
+			return true
+		}
+		return !cfg.ShouldIgnoreTable(tableName)
+	})
 }
 
 func relatedRowsForRow(ctx context.Context, db *sql.DB, sourceDriver string, catalog metadata.Catalog, row scannedRow, logf traceLogger) ([]scannedRow, error) {
@@ -260,23 +311,24 @@ func scanQuery(ctx context.Context, db *sql.DB, query string, args ...interface{
 	return out, rows.Err()
 }
 
-func buildCreateTable(outputDriver string, table metadata.Table, foreignKeys []metadata.ForeignKey) string {
+func buildCreateTable(outputDriver string, table metadata.Table, foreignKeys []metadata.ForeignKey, generatedPK *metadata.Column) string {
 	pkColumns := table.PrimaryKeyColumns()
-	inlineAutoPrimaryKey := len(pkColumns) == 1
+	inlineGeneratedPrimaryKey := len(pkColumns) == 1 && generatedPK != nil
 
 	definitions := make([]string, 0, len(table.Columns)+len(foreignKeys)+1)
 	for _, column := range table.Columns {
 		columnType := mapColumnType(outputDriver, column.Type)
 		identifier := quoteIdent(outputDriver, column.Name)
+		forceGeneratedPK := generatedPK != nil && strings.EqualFold(column.Name, generatedPK.Name)
 
-		if normalizeDialect(outputDriver) == "sqlite" && inlineAutoPrimaryKey && column.PrimaryKey && column.AutoIncrement {
+		if normalizeDialect(outputDriver) == "sqlite" && inlineGeneratedPrimaryKey && forceGeneratedPK {
 			definitions = append(definitions, fmt.Sprintf("%s INTEGER PRIMARY KEY AUTOINCREMENT", identifier))
 			continue
 		}
 
 		var parts []string
 		parts = append(parts, identifier, columnType)
-		if column.AutoIncrement && isIntegerType(columnType) {
+		if (column.AutoIncrement || forceGeneratedPK) && isIntegerType(columnType) {
 			switch normalizeDialect(outputDriver) {
 			case "postgres":
 				parts = append(parts, "GENERATED BY DEFAULT AS IDENTITY")
@@ -291,7 +343,7 @@ func buildCreateTable(outputDriver string, table metadata.Table, foreignKeys []m
 		definitions = append(definitions, strings.Join(parts, " "))
 	}
 
-	if len(pkColumns) > 0 && !(normalizeDialect(outputDriver) == "sqlite" && inlineAutoPrimaryKey && hasSingleAutoPrimaryKey(table)) {
+	if len(pkColumns) > 0 && !(normalizeDialect(outputDriver) == "sqlite" && inlineGeneratedPrimaryKey) {
 		definitions = append(definitions, fmt.Sprintf("PRIMARY KEY (%s)", joinQuoted(outputDriver, pkColumns)))
 	}
 
@@ -305,11 +357,6 @@ func buildCreateTable(outputDriver string, table metadata.Table, foreignKeys []m
 	}
 
 	return fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n  %s\n);\n", quoteIdent(outputDriver, table.Name), strings.Join(definitions, ",\n  "))
-}
-
-func hasSingleAutoPrimaryKey(table metadata.Table) bool {
-	_, ok := singleAutoIncrementPrimaryKey(table)
-	return ok
 }
 
 func buildInsert(cfg config.Config, row scannedRow, tableMeta metadata.Table, tableForeignKeys []metadata.ForeignKey, mappings map[string]newIDMapping) (string, error) {
@@ -444,7 +491,7 @@ func buildNewIDMappings(catalog metadata.Catalog, tableOrder []string, enabled b
 			continue
 		}
 
-		pk, ok := singleAutoIncrementPrimaryKey(tableMeta)
+		pk, ok := singleIntegerPrimaryKey(tableMeta)
 		if !ok {
 			continue
 		}
@@ -458,19 +505,33 @@ func buildNewIDMappings(catalog metadata.Catalog, tableOrder []string, enabled b
 	return mappings
 }
 
-func singleAutoIncrementPrimaryKey(table metadata.Table) (metadata.Column, bool) {
+func singleIntegerPrimaryKey(table metadata.Table) (metadata.Column, bool) {
 	pkColumns := table.PrimaryKeyColumns()
 	if len(pkColumns) != 1 {
 		return metadata.Column{}, false
 	}
 
 	for _, column := range table.Columns {
-		if column.PrimaryKey && column.AutoIncrement {
+		if column.PrimaryKey && isIntegerColumn(column) {
 			return column, true
 		}
 	}
 
 	return metadata.Column{}, false
+}
+
+func mappingPrimaryKey(mappings map[string]newIDMapping, tableName string) *metadata.Column {
+	if mappings == nil {
+		return nil
+	}
+
+	mapping, ok := mappings[strings.ToLower(tableName)]
+	if !ok {
+		return nil
+	}
+
+	pk := mapping.PK
+	return &pk
 }
 
 func buildMappingTableSetup(outputDriver string, mapping newIDMapping) string {
@@ -902,6 +963,10 @@ func mapFloatType(target string, wide bool) string {
 func isIntegerType(columnType string) bool {
 	lower := strings.ToLower(columnType)
 	return strings.Contains(lower, "int")
+}
+
+func isIntegerColumn(column metadata.Column) bool {
+	return isIntegerType(mapColumnType("sqlite", column.Type))
 }
 
 func formatValue(v sql.NullString, colType *sql.ColumnType) string {
