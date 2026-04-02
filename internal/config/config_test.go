@@ -15,6 +15,7 @@ func TestDefaultFromEnv(t *testing.T) {
 	t.Setenv("TRACESQL_PASSWORD", "secret")
 	t.Setenv("TRACESQL_DATABASE", "trace")
 	t.Setenv("TRACESQL_NEW_IDS", "true")
+	t.Setenv("TRACESQL_RELATIONS_BY_NAME", "true")
 
 	cfg := config.Default()
 
@@ -35,6 +36,9 @@ func TestDefaultFromEnv(t *testing.T) {
 	}
 	if !cfg.NewIDs {
 		t.Fatalf("flag de novos IDs deveria estar true")
+	}
+	if !cfg.RelationsByName {
+		t.Fatalf("flag de relacoes por nome deveria estar true")
 	}
 }
 

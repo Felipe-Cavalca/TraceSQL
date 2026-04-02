@@ -13,35 +13,37 @@ import (
 
 // Config agrupa parametros de conexao e exportacao.
 type Config struct {
-	Driver       string
-	OutputDriver string
-	DSN          string
-	Host         string
-	Port         string
-	User         string
-	Password     string
-	Database     string
-	Table        string
-	Column       string
-	Record       string
-	OutFile      string
-	NewIDs       bool
-	Log          bool
+	Driver          string
+	OutputDriver    string
+	DSN             string
+	Host            string
+	Port            string
+	User            string
+	Password        string
+	Database        string
+	Table           string
+	Column          string
+	Record          string
+	OutFile         string
+	NewIDs          bool
+	RelationsByName bool
+	Log             bool
 
-	driverSet       bool
-	outputDriverSet bool
-	dsnSet          bool
-	hostSet         bool
-	portSet         bool
-	userSet         bool
-	passwordSet     bool
-	databaseSet     bool
-	tableSet        bool
-	columnSet       bool
-	recordSet       bool
-	outFileSet      bool
-	newIDsSet       bool
-	logSet          bool
+	driverSet          bool
+	outputDriverSet    bool
+	dsnSet             bool
+	hostSet            bool
+	portSet            bool
+	userSet            bool
+	passwordSet        bool
+	databaseSet        bool
+	tableSet           bool
+	columnSet          bool
+	recordSet          bool
+	outFileSet         bool
+	newIDsSet          bool
+	relationsByNameSet bool
+	logSet             bool
 }
 
 // Default le valores do ambiente e define padroes.
@@ -56,32 +58,35 @@ func Default() Config {
 	database, databaseSet := lookupEnv("TRACESQL_DATABASE")
 	outFile, outFileSet := lookupEnv("TRACESQL_OUT")
 	newIDsRaw, newIDsSet := lookupEnv("TRACESQL_NEW_IDS")
+	relationsByNameRaw, relationsByNameSet := lookupEnv("TRACESQL_RELATIONS_BY_NAME")
 	logRaw, logSet := lookupEnv("TRACESQL_LOG")
 
 	return Config{
-		Driver:          driver,
-		OutputDriver:    outputDriver,
-		DSN:             dsn,
-		Host:            host,
-		Port:            port,
-		User:            user,
-		Password:        password,
-		Database:        database,
-		Column:          "id",
-		OutFile:         outFile,
-		NewIDs:          parseBool(newIDsRaw),
-		Log:             parseBool(logRaw),
-		driverSet:       driverSet,
-		outputDriverSet: outputDriverSet,
-		dsnSet:          dsnSet,
-		hostSet:         hostSet,
-		portSet:         portSet,
-		userSet:         userSet,
-		passwordSet:     passwordSet,
-		databaseSet:     databaseSet,
-		outFileSet:      outFileSet,
-		newIDsSet:       newIDsSet,
-		logSet:          logSet,
+		Driver:             driver,
+		OutputDriver:       outputDriver,
+		DSN:                dsn,
+		Host:               host,
+		Port:               port,
+		User:               user,
+		Password:           password,
+		Database:           database,
+		Column:             "id",
+		OutFile:            outFile,
+		NewIDs:             parseBool(newIDsRaw),
+		RelationsByName:    parseBool(relationsByNameRaw),
+		Log:                parseBool(logRaw),
+		driverSet:          driverSet,
+		outputDriverSet:    outputDriverSet,
+		dsnSet:             dsnSet,
+		hostSet:            hostSet,
+		portSet:            portSet,
+		userSet:            userSet,
+		passwordSet:        passwordSet,
+		databaseSet:        databaseSet,
+		outFileSet:         outFileSet,
+		newIDsSet:          newIDsSet,
+		relationsByNameSet: relationsByNameSet,
+		logSet:             logSet,
 	}
 }
 
@@ -100,6 +105,7 @@ func AttachFlags(cmd *cobra.Command, cfg Config) {
 	cmd.PersistentFlags().String("record", cfg.Record, "Valor do registro a exportar")
 	cmd.PersistentFlags().String("out", cfg.OutFile, "Caminho do arquivo .sql a gerar")
 	cmd.PersistentFlags().Bool("new-ids", cfg.NewIDs, "Gerar novos IDs (omite a coluna de referencia no insert)")
+	cmd.PersistentFlags().Bool("relations-by-name", cfg.RelationsByName, "Infere relacoes pelo padrao [tabela]_id quando nao houver foreign key")
 	cmd.PersistentFlags().Bool("log", cfg.Log, "Exibe logs de execucao no stderr")
 }
 
@@ -171,6 +177,11 @@ func BindFlags(cmd *cobra.Command, cfg *Config) error {
 		cfg.newIDsSet = true
 	}
 	cfg.NewIDs, _ = flags.GetBool("new-ids")
+
+	if flags.Changed("relations-by-name") {
+		cfg.relationsByNameSet = true
+	}
+	cfg.RelationsByName, _ = flags.GetBool("relations-by-name")
 
 	if flags.Changed("log") {
 		cfg.logSet = true

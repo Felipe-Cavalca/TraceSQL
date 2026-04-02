@@ -24,6 +24,7 @@ func TestFillMissingNaoPerguntaCamposJaInformadosPorFlag(t *testing.T) {
 		"--column", "id",
 		"--record", "1001",
 		"--new-ids=false",
+		"--relations-by-name",
 		"--output-driver", "sqlite",
 		"--log",
 	}
@@ -50,6 +51,9 @@ func TestFillMissingNaoPerguntaCamposJaInformadosPorFlag(t *testing.T) {
 	}
 	if cfg.NewIDs {
 		t.Fatalf("new_ids deveria permanecer false")
+	}
+	if !cfg.RelationsByName {
+		t.Fatalf("relations_by_name deveria permanecer true")
 	}
 	if !cfg.Log {
 		t.Fatalf("log deveria permanecer true")

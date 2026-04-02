@@ -34,7 +34,7 @@ func main() {
 			if err := config.BindFlags(cmd, &cfg); err != nil {
 				return err
 			}
-			logf("configuração carregada: origem=%s destino=%s tabela=%s coluna=%s registro=%s new_ids=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs)
+			logf("configuração carregada: origem=%s destino=%s tabela=%s coluna=%s registro=%s new_ids=%t relations_by_name=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs, cfg.RelationsByName)
 
 			if err := prompt.FillMissing(&cfg, os.Stdin, os.Stdout); err != nil {
 				return err
