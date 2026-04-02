@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
 	mysql "github.com/go-sql-driver/mysql"
@@ -13,21 +14,23 @@ import (
 
 // Config agrupa parametros de conexao e exportacao.
 type Config struct {
-	Driver          string
-	OutputDriver    string
-	DSN             string
-	Host            string
-	Port            string
-	User            string
-	Password        string
-	Database        string
-	Table           string
-	Column          string
-	Record          string
-	OutFile         string
-	NewIDs          bool
-	RelationsByName bool
-	Log             bool
+	Driver            string
+	OutputDriver      string
+	DSN               string
+	Host              string
+	Port              string
+	User              string
+	Password          string
+	Database          string
+	Table             string
+	Column            string
+	Record            string
+	OutFile           string
+	NewIDs            bool
+	RelationsByName   bool
+	Depth             *int
+	IgnoreTableSuffix string
+	Log               bool
 
 	driverSet          bool
 	outputDriverSet    bool
@@ -59,6 +62,8 @@ func Default() Config {
 	outFile, outFileSet := lookupEnv("TRACESQL_OUT")
 	newIDsRaw, newIDsSet := lookupEnv("TRACESQL_NEW_IDS")
 	relationsByNameRaw, relationsByNameSet := lookupEnv("TRACESQL_RELATIONS_BY_NAME")
+	depthRaw, _ := lookupEnv("TRACESQL_DEPTH")
+	ignoreTableSuffix, _ := lookupEnv("TRACESQL_IGNORE_TABLE_SUFFIX")
 	logRaw, logSet := lookupEnv("TRACESQL_LOG")
 
 	return Config{
@@ -74,6 +79,8 @@ func Default() Config {
 		OutFile:            outFile,
 		NewIDs:             parseBool(newIDsRaw),
 		RelationsByName:    parseBool(relationsByNameRaw),
+		Depth:              parseOptionalInt(depthRaw),
+		IgnoreTableSuffix:  strings.TrimSpace(ignoreTableSuffix),
 		Log:                parseBool(logRaw),
 		driverSet:          driverSet,
 		outputDriverSet:    outputDriverSet,
@@ -92,6 +99,11 @@ func Default() Config {
 
 // AttachFlags registra as flags do CLI.
 func AttachFlags(cmd *cobra.Command, cfg Config) {
+	depthDefault := 0
+	if cfg.Depth != nil {
+		depthDefault = *cfg.Depth
+	}
+
 	cmd.PersistentFlags().String("driver", cfg.Driver, "Driver do banco (postgres, mysql, sqlite)")
 	cmd.PersistentFlags().String("output-driver", cfg.OutputDriver, "Dialeto do SQL gerado (padrao: mesmo driver da origem)")
 	cmd.PersistentFlags().String("dsn", cfg.DSN, "DSN de conexao do banco (opcional se host/port/user/password/database forem informados)")
@@ -106,6 +118,8 @@ func AttachFlags(cmd *cobra.Command, cfg Config) {
 	cmd.PersistentFlags().String("out", cfg.OutFile, "Caminho do arquivo .sql a gerar")
 	cmd.PersistentFlags().Bool("new-ids", cfg.NewIDs, "Gerar novos IDs (omite a coluna de referencia no insert)")
 	cmd.PersistentFlags().Bool("relations-by-name", cfg.RelationsByName, "Infere relacoes pelo padrao [tabela]_id quando nao houver foreign key")
+	cmd.PersistentFlags().Int("depth", depthDefault, "Profundidade maxima das relacoes (omitido = ilimitado, 0 = so o registro base)")
+	cmd.PersistentFlags().String("ignore-table-suffix", cfg.IgnoreTableSuffix, "Ignora tabelas cujo nome termina com este sufixo (ex.: _log)")
 	cmd.PersistentFlags().Bool("log", cfg.Log, "Exibe logs de execucao no stderr")
 }
 
@@ -183,6 +197,13 @@ func BindFlags(cmd *cobra.Command, cfg *Config) error {
 	}
 	cfg.RelationsByName, _ = flags.GetBool("relations-by-name")
 
+	if flags.Changed("depth") {
+		depth, _ := flags.GetInt("depth")
+		cfg.Depth = &depth
+	}
+
+	cfg.IgnoreTableSuffix, _ = flags.GetString("ignore-table-suffix")
+
 	if flags.Changed("log") {
 		cfg.logSet = true
 	}
@@ -232,6 +253,9 @@ func (c Config) Validate() error {
 
 	if len(missing) > 0 {
 		return fmt.Errorf("campos obrigatorios faltando: %s", strings.Join(missing, ", "))
+	}
+	if c.Depth != nil && *c.Depth < 0 {
+		return fmt.Errorf("depth deve ser maior ou igual a 0 quando informado")
 	}
 	return nil
 }
@@ -381,6 +405,28 @@ func (c Config) NewIDsProvided() bool {
 	return c.newIDsSet
 }
 
+func (c Config) DepthLimit() (int, bool) {
+	if c.Depth == nil {
+		return 0, false
+	}
+	return *c.Depth, true
+}
+
+func (c Config) DepthLabel() string {
+	if c.Depth == nil {
+		return "ilimitada"
+	}
+	return strconv.Itoa(*c.Depth)
+}
+
+func (c Config) ShouldIgnoreTable(table string) bool {
+	suffix := strings.ToLower(strings.TrimSpace(c.IgnoreTableSuffix))
+	if suffix == "" {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(strings.TrimSpace(table)), suffix)
+}
+
 func (c Config) DefaultPort() string {
 	switch strings.ToLower(c.Driver) {
 	case "postgres":
@@ -446,4 +492,19 @@ func parseBool(raw string) bool {
 	default:
 		return false
 	}
+}
+
+func parseOptionalInt(raw string) *int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+
+	value, err := strconv.Atoi(raw)
+	if err != nil {
+		invalid := -1
+		return &invalid
+	}
+
+	return &value
 }

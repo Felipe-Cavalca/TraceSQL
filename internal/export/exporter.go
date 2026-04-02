@@ -34,7 +34,18 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 	cfg.Normalize()
 	cfg.EnsureDefaults()
 	logf := newTraceLogger(cfg.Log)
-	logf("iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t", cfg.Driver, cfg.OutputDriver, cfg.Table, cfg.Column, cfg.Record, cfg.NewIDs, cfg.RelationsByName)
+	logf(
+		"iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t depth=%s ignore_table_suffix=%q",
+		cfg.Driver,
+		cfg.OutputDriver,
+		cfg.Table,
+		cfg.Column,
+		cfg.Record,
+		cfg.NewIDs,
+		cfg.RelationsByName,
+		cfg.DepthLabel(),
+		cfg.IgnoreTableSuffix,
+	)
 
 	baseRows, err := queryRowsByValue(ctx, db, cfg.Driver, cfg.Table, cfg.Column, cfg.Record, logf)
 	if err != nil {
@@ -50,15 +61,17 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 		return "", fmt.Errorf("descobrindo metadata: %w", err)
 	}
 	logf("metadata descoberta: %d tabelas e %d foreign keys", len(catalog.TableNames()), len(catalog.ForeignKeys))
+	if tableMeta, ok := catalog.Table(cfg.Table); ok {
+		cfg.Table = tableMeta.Name
+	}
+	catalog = filterCatalog(catalog, cfg)
+	logf("metadata filtrada: %d tabelas e %d foreign keys", len(catalog.TableNames()), len(catalog.ForeignKeys))
 	if cfg.RelationsByName {
 		var inferred int
 		catalog, inferred = catalog.WithNameInferredForeignKeys()
 		logf("relações por nome habilitadas: %d relações inferidas (%d total)", inferred, len(catalog.ForeignKeys))
 	}
 
-	if tableMeta, ok := catalog.Table(cfg.Table); ok {
-		cfg.Table = tableMeta.Name
-	}
 	for i := range baseRows {
 		baseRows[i].table = cfg.Table
 	}
@@ -136,14 +149,24 @@ type scannedRow struct {
 	index map[string]int
 }
 
+type queuedRow struct {
+	row   scannedRow
+	depth int
+}
+
 func collectRows(ctx context.Context, db *sql.DB, cfg config.Config, catalog metadata.Catalog, baseRows []scannedRow, logf traceLogger) (map[string][]scannedRow, error) {
-	queue := append([]scannedRow(nil), baseRows...)
+	queue := make([]queuedRow, 0, len(baseRows))
+	for _, row := range baseRows {
+		queue = append(queue, queuedRow{row: row, depth: 0})
+	}
 	rowsByTable := map[string][]scannedRow{}
 	seen := map[string]struct{}{}
+	maxDepth, limitedDepth := cfg.DepthLimit()
 
 	for len(queue) > 0 {
-		row := queue[0]
+		item := queue[0]
 		queue = queue[1:]
+		row := item.row
 
 		tableMeta, ok := catalog.Table(row.table)
 		if ok {
@@ -157,14 +180,33 @@ func collectRows(ctx context.Context, db *sql.DB, cfg config.Config, catalog met
 		seen[identity] = struct{}{}
 		rowsByTable[row.table] = append(rowsByTable[row.table], row)
 
+		if limitedDepth && item.depth >= maxDepth {
+			continue
+		}
+
 		relatedRows, err := relatedRowsForRow(ctx, db, cfg.Driver, catalog, row, logf)
 		if err != nil {
 			return nil, err
 		}
-		queue = append(queue, relatedRows...)
+		for _, relatedRow := range relatedRows {
+			queue = append(queue, queuedRow{row: relatedRow, depth: item.depth + 1})
+		}
 	}
 
 	return rowsByTable, nil
+}
+
+func filterCatalog(catalog metadata.Catalog, cfg config.Config) metadata.Catalog {
+	if strings.TrimSpace(cfg.IgnoreTableSuffix) == "" {
+		return catalog
+	}
+
+	return catalog.FilterTables(func(tableName string) bool {
+		if strings.EqualFold(tableName, cfg.Table) {
+			return true
+		}
+		return !cfg.ShouldIgnoreTable(tableName)
+	})
 }
 
 func relatedRowsForRow(ctx context.Context, db *sql.DB, sourceDriver string, catalog metadata.Catalog, row scannedRow, logf traceLogger) ([]scannedRow, error) {

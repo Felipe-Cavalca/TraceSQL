@@ -16,6 +16,8 @@ func TestDefaultFromEnv(t *testing.T) {
 	t.Setenv("TRACESQL_DATABASE", "trace")
 	t.Setenv("TRACESQL_NEW_IDS", "true")
 	t.Setenv("TRACESQL_RELATIONS_BY_NAME", "true")
+	t.Setenv("TRACESQL_DEPTH", "2")
+	t.Setenv("TRACESQL_IGNORE_TABLE_SUFFIX", "_log")
 
 	cfg := config.Default()
 
@@ -39,6 +41,12 @@ func TestDefaultFromEnv(t *testing.T) {
 	}
 	if !cfg.RelationsByName {
 		t.Fatalf("flag de relacoes por nome deveria estar true")
+	}
+	if cfg.Depth == nil || *cfg.Depth != 2 {
+		t.Fatalf("depth deveria vir do env: %+v", cfg.Depth)
+	}
+	if cfg.IgnoreTableSuffix != "_log" {
+		t.Fatalf("ignore table suffix deveria vir do env: %+v", cfg.IgnoreTableSuffix)
 	}
 }
 
@@ -82,6 +90,18 @@ func TestValidate(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("nao deveria falhar para sqlite com database: %v", err)
 	}
+
+	depth := -1
+	cfg = config.Config{
+		Driver:   "sqlite",
+		Database: "trace.db",
+		Table:    "users",
+		Record:   "1",
+		Depth:    &depth,
+	}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("deveria falhar para depth negativo")
+	}
 }
 
 func TestNormalize(t *testing.T) {
@@ -100,6 +120,39 @@ func TestEnsureDefaults(t *testing.T) {
 	}
 	if cfg.OutputDriver != "sqlite" {
 		t.Fatalf("output driver padrao deveria seguir o driver, obtido %s", cfg.OutputDriver)
+	}
+}
+
+func TestDepthHelpers(t *testing.T) {
+	cfg := config.Config{}
+	if depth, ok := cfg.DepthLimit(); ok || depth != 0 {
+		t.Fatalf("depth vazio deveria ser ilimitado: depth=%d ok=%t", depth, ok)
+	}
+	if cfg.DepthLabel() != "ilimitada" {
+		t.Fatalf("label inesperada para depth vazio: %s", cfg.DepthLabel())
+	}
+
+	depth := 0
+	cfg.Depth = &depth
+	if limit, ok := cfg.DepthLimit(); !ok || limit != 0 {
+		t.Fatalf("depth 0 deveria ser limitado: depth=%d ok=%t", limit, ok)
+	}
+	if cfg.DepthLabel() != "0" {
+		t.Fatalf("label inesperada para depth 0: %s", cfg.DepthLabel())
+	}
+}
+
+func TestShouldIgnoreTable(t *testing.T) {
+	cfg := config.Config{IgnoreTableSuffix: "_log"}
+
+	if !cfg.ShouldIgnoreTable("users_log") {
+		t.Fatal("deveria ignorar tabelas com o sufixo configurado")
+	}
+	if cfg.ShouldIgnoreTable("users_logs") {
+		t.Fatal("nao deveria ignorar tabelas com outro final")
+	}
+	if cfg.ShouldIgnoreTable("users") {
+		t.Fatal("nao deveria ignorar tabelas sem o sufixo")
 	}
 }
 

@@ -291,6 +291,127 @@ func TestRunExportNewIDsComRelacoesPorNomeNoDestinoSQLite(t *testing.T) {
 	)
 }
 
+func TestRunExportDepthZeroMantemApenasRegistroBase(t *testing.T) {
+	db := openSQLiteTestDB(t)
+
+	mustExec(t, db, "PRAGMA foreign_keys = ON")
+	mustExec(t, db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+	mustExec(t, db, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total INT, FOREIGN KEY(user_id) REFERENCES users(id))")
+	mustExec(t, db, "CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, sku TEXT, FOREIGN KEY(order_id) REFERENCES orders(id))")
+	mustExec(t, db, "INSERT INTO users (id, name) VALUES (1, 'Alice')")
+	mustExec(t, db, "INSERT INTO orders (id, user_id, total) VALUES (10, 1, 99)")
+	mustExec(t, db, "INSERT INTO order_items (id, order_id, sku) VALUES (100, 10, 'A-1')")
+
+	depth := 0
+	cfg := config.Config{
+		Driver:       "sqlite",
+		OutputDriver: "sqlite",
+		DSN:          "unused",
+		Table:        "orders",
+		Column:       "id",
+		Record:       "10",
+		Depth:        &depth,
+	}
+
+	sqlDump, err := Run(context.Background(), db, cfg)
+	if err != nil {
+		t.Fatalf("erro ao exportar com depth 0: %v", err)
+	}
+
+	containsAll(t, sqlDump,
+		"CREATE TABLE IF NOT EXISTS `orders`",
+		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
+	)
+
+	if strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `users`") || strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `order_items`") {
+		t.Fatalf("depth 0 nao deveria incluir tabelas relacionadas: %s", sqlDump)
+	}
+	if strings.Contains(sqlDump, "INSERT INTO `users`") || strings.Contains(sqlDump, "INSERT INTO `order_items`") {
+		t.Fatalf("depth 0 nao deveria incluir inserts relacionados: %s", sqlDump)
+	}
+}
+
+func TestRunExportDepthUmIncluiSomentePrimeiroNivel(t *testing.T) {
+	db := openSQLiteTestDB(t)
+
+	mustExec(t, db, "PRAGMA foreign_keys = ON")
+	mustExec(t, db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+	mustExec(t, db, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total INT, FOREIGN KEY(user_id) REFERENCES users(id))")
+	mustExec(t, db, "CREATE TABLE order_items (id INTEGER PRIMARY KEY, order_id INTEGER, sku TEXT, FOREIGN KEY(order_id) REFERENCES orders(id))")
+	mustExec(t, db, "CREATE TABLE item_events (id INTEGER PRIMARY KEY, order_item_id INTEGER, action TEXT, FOREIGN KEY(order_item_id) REFERENCES order_items(id))")
+	mustExec(t, db, "INSERT INTO users (id, name) VALUES (1, 'Alice')")
+	mustExec(t, db, "INSERT INTO orders (id, user_id, total) VALUES (10, 1, 99)")
+	mustExec(t, db, "INSERT INTO order_items (id, order_id, sku) VALUES (100, 10, 'A-1')")
+	mustExec(t, db, "INSERT INTO item_events (id, order_item_id, action) VALUES (1000, 100, 'packed')")
+
+	depth := 1
+	cfg := config.Config{
+		Driver:       "sqlite",
+		OutputDriver: "sqlite",
+		DSN:          "unused",
+		Table:        "orders",
+		Column:       "id",
+		Record:       "10",
+		Depth:        &depth,
+	}
+
+	sqlDump, err := Run(context.Background(), db, cfg)
+	if err != nil {
+		t.Fatalf("erro ao exportar com depth 1: %v", err)
+	}
+
+	containsAll(t, sqlDump,
+		"CREATE TABLE IF NOT EXISTS `users`",
+		"CREATE TABLE IF NOT EXISTS `orders`",
+		"CREATE TABLE IF NOT EXISTS `order_items`",
+		"INSERT INTO `users` (`id`, `name`) VALUES (1, 'Alice');",
+		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
+		"INSERT INTO `order_items` (`id`, `order_id`, `sku`) VALUES (100, 10, 'A-1');",
+	)
+
+	if strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `item_events`") || strings.Contains(sqlDump, "INSERT INTO `item_events`") {
+		t.Fatalf("depth 1 nao deveria incluir o segundo nivel de relacoes: %s", sqlDump)
+	}
+}
+
+func TestRunExportIgnoraTabelasPorSufixo(t *testing.T) {
+	db := openSQLiteTestDB(t)
+
+	mustExec(t, db, "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
+	mustExec(t, db, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_id INTEGER, total INT)")
+	mustExec(t, db, "CREATE TABLE orders_log (id INTEGER PRIMARY KEY, order_id INTEGER, message TEXT)")
+	mustExec(t, db, "INSERT INTO users (id, name) VALUES (1, 'Alice')")
+	mustExec(t, db, "INSERT INTO orders (id, user_id, total) VALUES (10, 1, 99)")
+	mustExec(t, db, "INSERT INTO orders_log (id, order_id, message) VALUES (100, 10, 'created')")
+
+	cfg := config.Config{
+		Driver:            "sqlite",
+		OutputDriver:      "sqlite",
+		DSN:               "unused",
+		Table:             "users",
+		Column:            "id",
+		Record:            "1",
+		RelationsByName:   true,
+		IgnoreTableSuffix: "_log",
+	}
+
+	sqlDump, err := Run(context.Background(), db, cfg)
+	if err != nil {
+		t.Fatalf("erro ao exportar ignorando sufixo: %v", err)
+	}
+
+	containsAll(t, sqlDump,
+		"CREATE TABLE IF NOT EXISTS `users`",
+		"CREATE TABLE IF NOT EXISTS `orders`",
+		"INSERT INTO `users` (`id`, `name`) VALUES (1, 'Alice');",
+		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
+	)
+
+	if strings.Contains(sqlDump, "orders_log") || strings.Contains(sqlDump, "'created'") {
+		t.Fatalf("tabelas com o sufixo ignorado nao deveriam aparecer no dump: %s", sqlDump)
+	}
+}
+
 func containsAll(t *testing.T, content string, snippets ...string) {
 	t.Helper()
 

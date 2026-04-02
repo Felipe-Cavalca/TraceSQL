@@ -174,3 +174,48 @@ func TestWithNameInferredForeignKeys(t *testing.T) {
 		t.Fatalf("relação inferida não encontrada: %+v", updated.ForeignKeys)
 	}
 }
+
+func TestFilterTables(t *testing.T) {
+	catalog := Catalog{
+		tables: map[string]Table{
+			"users": {
+				Name: "users",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+				},
+			},
+			"users_log": {
+				Name: "users_log",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+					{Name: "user_id"},
+				},
+			},
+			"orders": {
+				Name: "orders",
+				Columns: []Column{
+					{Name: "id", PrimaryKey: true},
+					{Name: "user_id"},
+				},
+			},
+		},
+		ForeignKeys: []ForeignKey{
+			{Table: "orders", Column: "user_id", RefTable: "users", RefColumn: "id"},
+			{Table: "users_log", Column: "user_id", RefTable: "users", RefColumn: "id"},
+		},
+	}
+
+	filtered := catalog.FilterTables(func(name string) bool {
+		return name != "users_log"
+	})
+
+	if _, ok := filtered.Table("users_log"); ok {
+		t.Fatal("users_log nao deveria permanecer no catalogo filtrado")
+	}
+	if len(filtered.ForeignKeys) != 1 {
+		t.Fatalf("esperava manter apenas 1 foreign key apos o filtro, obtive %+v", filtered.ForeignKeys)
+	}
+	if filtered.ForeignKeys[0].Table != "orders" {
+		t.Fatalf("foreign key inesperada apos o filtro: %+v", filtered.ForeignKeys[0])
+	}
+}
