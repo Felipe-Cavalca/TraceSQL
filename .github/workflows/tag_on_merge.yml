@@ -1,5 +1,8 @@
 name: Tag on merge
 
+permissions:
+  contents: write
+
 on:
   pull_request:
     types: [closed]
@@ -7,6 +10,7 @@ on:
 permissions:
   contents: write
   actions: write
+  pull-requests: read
 
 jobs:
   create_tag_and_draft_release:
