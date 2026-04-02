@@ -14,7 +14,7 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 ## Requisitos
 - Para uso normal, baixe o binário da Release compatível com seu sistema.
 - Go 1.22+ é necessário apenas se você quiser rodar o projeto a partir do código-fonte.
-- Um DSN válido para o banco de origem.
+- Dados de conexão do banco de origem (`host`, `porta`, `usuário`, `senha` e `banco`) ou um DSN válido.
 - Banco de origem suportado: `postgres`, `mysql` ou `sqlite`.
 
 ## Como usar
@@ -29,7 +29,11 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 ```bash
 ./tracesql-linux-amd64 \
   --driver postgres \
-  --dsn 'postgres://user:pass@localhost:5432/app' \
+  --host 127.0.0.1 \
+  --port 5432 \
+  --user user \
+  --password pass \
+  --database app \
   --table orders \
   --column id \
   --record 10 \
@@ -45,7 +49,11 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 
 Se algum campo obrigatório não for informado por flag, o CLI pergunta no terminal:
 - driver
-- dsn
+- ip/host
+- porta
+- usuário
+- senha
+- banco
 - tabela de origem
 - coluna de referência
 - valor do registro
@@ -64,7 +72,12 @@ go run ./cmd/tracesql
 | Flag | Obrigatória | Descrição |
 | --- | --- | --- |
 | `--driver` | Sim | Driver do banco de origem: `postgres`, `mysql` ou `sqlite`. |
-| `--dsn` | Sim | String de conexão do banco de origem. |
+| `--dsn` | Não | String de conexão do banco de origem. Continua aceita para compatibilidade ou cenários avançados. |
+| `--host` | Sim* | IP ou host do banco. Obrigatória quando `--dsn` não for informado. |
+| `--port` | Sim* | Porta do banco. Obrigatória quando `--dsn` não for informado. |
+| `--user` | Sim* | Usuário do banco. Obrigatória quando `--dsn` não for informado. |
+| `--password` | Não | Senha do banco. Se não vier por flag ou ambiente, o CLI pergunta interativamente. |
+| `--database` | Sim* | Nome do banco ou caminho do arquivo SQLite. Obrigatória quando `--dsn` não for informado. |
 | `--table` | Sim | Tabela inicial da exportação. |
 | `--record` | Sim | Valor do registro que será usado como ponto de partida. |
 | `--column` | Não | Coluna de referência usada no filtro inicial. Padrão: `id`. |
@@ -81,6 +94,11 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 | --- | --- |
 | `TRACESQL_DRIVER` | Mesmo valor da flag `--driver`. |
 | `TRACESQL_DSN` | Mesmo valor da flag `--dsn`. |
+| `TRACESQL_HOST` | Mesmo valor da flag `--host`. |
+| `TRACESQL_PORT` | Mesmo valor da flag `--port`. |
+| `TRACESQL_USER` | Mesmo valor da flag `--user`. |
+| `TRACESQL_PASSWORD` | Mesmo valor da flag `--password`. |
+| `TRACESQL_DATABASE` | Mesmo valor da flag `--database`. |
 | `TRACESQL_OUTPUT_DRIVER` | Mesmo valor da flag `--output-driver`. |
 | `TRACESQL_NEW_IDS` | Mesmo valor da flag `--new-ids`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
 | `TRACESQL_OUT` | Mesmo valor da flag `--out`. |
