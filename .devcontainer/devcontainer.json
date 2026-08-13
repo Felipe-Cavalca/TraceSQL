@@ -1,5 +1,5 @@
 {
-  "name": "TraceSQL Go",
+  "name": "TraceSQL-dev",
   "containerName": "dev-tracesql",
   "build": {
     "dockerfile": "Dockerfile"
