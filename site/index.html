@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TraceSQL · só o que se relaciona</title>
+<meta name="description" content="TraceSQL exporta um registro e todo o grafo relacional dele para um .sql, para manter uma base local alinhada com a remota sem puxar tudo. / Export one record and its related rows to keep a local database in sync with a remote one.">
+<meta property="og:title" content="TraceSQL">
+<meta property="og:description" content="Leve para o local só o registro e o que se relaciona com ele. / Pull just a record and what relates to it.">
+<meta property="og:type" content="website">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#top">trace<b>SQL</b></a>
+  <nav>
+    <a href="#objetivo"><span class="pt">objetivo</span><span class="en">goal</span></a>
+    <a href="#como"><span class="pt">como funciona</span><span class="en">how it works</span></a>
+    <a href="#demo"><span class="pt">demo</span><span class="en">demo</span></a>
+    <a href="#usar"><span class="pt">usar</span><span class="en">use</span></a>
+    <a href="https://github.com/Felipe-Cavalca/TraceSQL">github</a>
+    <button id="lang" type="button" aria-label="Idioma / Language">EN</button>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <div class="hero-text">
+    <h1>trace<b>SQL</b></h1>
+    <p class="pt">Você precisa de um registro da base remota na sua máquina. Só que esse registro depende de um cliente, que tem pedidos, que têm itens, que apontam para produtos&hellip; e fazer dump da base inteira não é opção.</p>
+    <p class="en">You need one record from the remote database on your machine. But that record depends on a customer, which has orders, which have items, which point to products&hellip; and dumping the whole database is not an option.</p>
+    <p class="pt">O TraceSQL parte de um registro, segue as relações e gera um <code>.sql</code> só com o que está ligado a ele.</p>
+    <p class="en">TraceSQL starts from one record, follows the relations, and writes a <code>.sql</code> with only what is connected to it.</p>
+    <p class="hint"><span class="pt">um binário. sem dump gigante. <b>só os relacionados.</b></span><span class="en">one binary. no giant dump. <b>just the related rows.</b></span></p>
+  </div>
+  <div class="term" aria-hidden="true">
+    <div class="term-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+    <pre id="typed"></pre>
+  </div>
+</section>
+
+<!-- objetivo: remoto -> .sql -> local, guiado pelo scroll -->
+<section id="objetivo" class="scrolly">
+  <div class="stage">
+    <div class="stage-text">
+      <h2><span class="pt">o objetivo</span><span class="en">the goal</span></h2>
+      <div class="scenes">
+        <div class="scene-text on">
+          <span class="kick">1 / 4</span>
+          <h3 class="pt">uma base, sem puxar tudo</h3><h3 class="en">one database, without pulling everything</h3>
+          <p class="pt">Manter a base local alinhada com a remota <b>sem puxar tudo</b>. Aqui está a base remota, com tabelas de todo tipo.</p>
+          <p class="en">Keep your local database aligned with the remote one <b>without pulling everything</b>. Here is the remote database, with tables of every kind.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">2 / 4</span>
+          <h3 class="pt">só o que se relaciona</h3><h3 class="en">only what relates</h3>
+          <p class="pt">A partir do registro que você apontou, o TraceSQL acha as tabelas ligadas a ele. O resto da base fica de fora.</p>
+          <p class="en">From the record you picked, TraceSQL finds the tables connected to it. The rest of the database stays out.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">3 / 4</span>
+          <h3 class="pt">vira um .sql</h3><h3 class="en">becomes one .sql</h3>
+          <p class="pt">As linhas relacionadas, com o schema necessário, viram um único arquivo, no dialeto do banco de destino.</p>
+          <p class="en">The related rows, with the schema they need, become a single file in the target database's dialect.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">4 / 4</span>
+          <h3 class="pt">chega no local</h3><h3 class="en">lands locally</h3>
+          <p class="pt">A base local recebe só a fatia: o que você precisa para reproduzir um problema, testar uma migração ou popular um ambiente.</p>
+          <p class="en">Your local database gets just the slice: what you need to reproduce a bug, test a migration or seed an environment.</p>
+        </div>
+      </div>
+      <div class="dots" role="tablist" aria-label="Etapas / Steps"></div>
+    </div>
+    <div class="stage-vis" aria-hidden="true">
+      <div class="flow" id="flow">
+        <div class="db">
+          <h4><span class="pt">base remota</span><span class="en">remote database</span></h4>
+          <div class="chips" id="remoteChips"></div>
+        </div>
+        <div class="pipe"><span class="dot"></span><span class="lbl">.sql</span></div>
+        <div class="db">
+          <h4><span class="pt">base local</span><span class="en">local database</span></h4>
+          <div class="chips" id="localChips"></div>
+        </div>
+      </div>
+      <p class="count flow-count" id="flowCount"></p>
+    </div>
+  </div>
+</section>
+
+<!-- como funciona -->
+<section id="como" class="scrolly">
+  <div class="stage" id="stage">
+    <div class="stage-text">
+      <h2><span class="pt">como funciona</span><span class="en">how it works</span></h2>
+      <div class="scenes">
+        <div class="scene-text on">
+          <span class="kick">1 / 5</span>
+          <h3 class="pt">a base inteira</h3><h3 class="en">the whole database</h3>
+          <p class="pt">Sua base remota tem dezenas de tabelas e milhões de linhas. Para reproduzir um problema você só precisa de uma fatia dela.</p>
+          <p class="en">Your remote database has dozens of tables and millions of rows. To reproduce a bug you only need a slice of it.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">2 / 5</span>
+          <h3 class="pt">aponte um registro</h3><h3 class="en">pick a record</h3>
+          <p class="pt">Informe tabela, coluna e valor. Ex.: <code>orders</code>, <code>id</code>, <code>10</code>. É o ponto de partida.</p>
+          <p class="en">Give a table, column and value. E.g. <code>orders</code>, <code>id</code>, <code>10</code>. That is the starting point.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">3 / 5</span>
+          <h3 class="pt">siga as relações</h3><h3 class="en">follow the relations</h3>
+          <p class="pt">Pais e filhos por foreign key, ou pelo padrão <code>[tabela]_id</code> quando não há FK. Limite a profundidade e ignore tabelas como <code>_log</code>.</p>
+          <p class="en">Parents and children via foreign keys, or the <code>[table]_id</code> pattern when there are none. Cap the depth and skip tables such as <code>_log</code>.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">4 / 5</span>
+          <h3 class="pt">gere o SQL</h3><h3 class="en">get the SQL</h3>
+          <p class="pt">O resto fica de fora. Sai um arquivo com <code>CREATE TABLE IF NOT EXISTS</code> e <code>INSERT</code>s no dialeto de destino: Postgres, MySQL ou SQLite.</p>
+          <p class="en">Everything else stays out. You get one file with <code>CREATE TABLE IF NOT EXISTS</code> and <code>INSERT</code>s in the target dialect: Postgres, MySQL or SQLite.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">5 / 5</span>
+          <h3 class="pt">migre / importe</h3><h3 class="en">migrate / import</h3>
+          <p class="pt">Rode o arquivo na base local. Com <code>--new-ids</code>, os IDs são regenerados e as referências entre tabelas continuam corretas.</p>
+          <p class="en">Run the file on your local database. With <code>--new-ids</code>, IDs are regenerated and cross-table references stay correct.</p>
+        </div>
+      </div>
+      <div class="dots" role="tablist" aria-label="Etapas / Steps"></div>
+    </div>
+
+    <div class="stage-vis js-only" aria-hidden="true">
+      <svg id="graphSvg" viewBox="0 0 580 400" xmlns="http://www.w3.org/2000/svg"></svg>
+      <div class="sqlcard">
+        <pre class="c3"><span class="k">-- export_orders_10.sql</span>
+CREATE TABLE IF NOT EXISTS orders (...);
+INSERT INTO orders VALUES (10, ...);
+INSERT INTO customers VALUES (7, ...);
+INSERT INTO products VALUES (3, ...);</pre>
+        <pre class="c4">$ mysql local &lt; orders_10.sql
+<span class="ok">✓</span> 5 <span class="pt">tabelas</span><span class="en">tables</span> · 9 <span class="pt">linhas importadas</span><span class="en">rows imported</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- teste a profundidade: o scroll move a bolinha; dá para mexer à mão também -->
+<section id="demo" class="scrolly">
+  <div class="stage">
+    <div class="stage-text">
+      <h2><span class="pt">teste a profundidade</span><span class="en">try the depth</span></h2>
+      <div class="scenes">
+        <div class="scene-text on">
+          <span class="kick">0</span>
+          <h3 class="pt">profundidade 0</h3><h3 class="en">depth 0</h3>
+          <p class="pt">Só o registro base, <code>orders #10</code>, e mais nada. Exemplo fictício.</p>
+          <p class="en">Just the base record, <code>orders #10</code>, and nothing else. Made-up example.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">1</span>
+          <h3 class="pt">profundidade 1</h3><h3 class="en">depth 1</h3>
+          <p class="pt">Pais e filhos diretos: <code>customers</code>, <code>order_items</code>, <code>shipments</code>. A tabela <code>order_log</code> fica de fora por causa do sufixo <code>_log</code>.</p>
+          <p class="en">Direct parents and children: <code>customers</code>, <code>order_items</code>, <code>shipments</code>. <code>order_log</code> stays out because of the <code>_log</code> suffix.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">2</span>
+          <h3 class="pt">profundidade 2</h3><h3 class="en">depth 2</h3>
+          <p class="pt">Um nível além: os produtos dos itens e o país do cliente.</p>
+          <p class="en">One level further: the items' products and the customer's country.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">3</span>
+          <h3 class="pt">sem limite</h3><h3 class="en">no limit</h3>
+          <p class="pt">Sem <code>--depth</code> o grafo inteiro é percorrido. Agora é com você: mexa na bolinha ou desligue o filtro <code>_log</code>.</p>
+          <p class="en">Without <code>--depth</code> the whole graph is walked. Now it's up to you: move the knob or turn the <code>_log</code> filter off.</p>
+        </div>
+      </div>
+      <div class="dots" role="tablist" aria-label="Etapas / Steps"></div>
+    </div>
+    <div class="stage-vis">
+      <div class="demo">
+        <div class="controls">
+          <label><span class="pt">profundidade</span><span class="en">depth</span>
+            <input id="depth" type="range" min="0" max="3" value="0"><output id="depthOut">0</output></label>
+          <label class="chk"><input id="skipLog" type="checkbox" checked>
+            <span><span class="pt">ignorar sufixo</span><span class="en">ignore suffix</span> <code>_log</code></span></label>
+        </div>
+        <ul id="graph" class="graph"></ul>
+        <div class="meter" aria-hidden="true"><i id="meterFill"></i></div>
+        <p class="count" id="count"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- usar -->
+<section id="usar" class="scrolly">
+  <div class="stage">
+    <div class="stage-text">
+      <h2><span class="pt">usar</span><span class="en">use it</span></h2>
+      <div class="scenes">
+        <div class="scene-text on">
+          <span class="kick">1 / 3</span>
+          <h3 class="pt">baixe o binário</h3><h3 class="en">get the binary</h3>
+          <p class="pt">Nas <a href="https://github.com/Felipe-Cavalca/TraceSQL/releases/latest">Releases</a> há binários para Linux, macOS e Windows (amd64 e arm64): <code>tracesql-&lt;os&gt;-&lt;arch&gt;</code>. Um arquivo só, sem instalar nada.</p>
+          <p class="en">The <a href="https://github.com/Felipe-Cavalca/TraceSQL/releases/latest">Releases</a> page has binaries for Linux, macOS and Windows (amd64 and arm64): <code>tracesql-&lt;os&gt;-&lt;arch&gt;</code>. A single file, nothing to install.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">2 / 3</span>
+          <h3 class="pt">exporte</h3><h3 class="en">export</h3>
+          <p class="pt">Sem flags, ele pergunta o que faltar no terminal. Também lê <code>.env</code> e variáveis <code>TRACESQL_*</code>.</p>
+          <p class="en">With no flags it asks for whatever is missing. It also reads <code>.env</code> and <code>TRACESQL_*</code> variables.</p>
+        </div>
+        <div class="scene-text">
+          <span class="kick">3 / 3</span>
+          <h3 class="pt">importe no local</h3><h3 class="en">import locally</h3>
+          <p class="pt">Rode o <code>.sql</code> na sua base. Origem e destino são independentes: Postgres, MySQL ou SQLite.</p>
+          <p class="en">Run the <code>.sql</code> on your database. Source and target are independent: Postgres, MySQL or SQLite.</p>
+        </div>
+      </div>
+      <div class="dots" role="tablist" aria-label="Etapas / Steps"></div>
+    </div>
+    <div class="stage-vis plain">
+      <div class="term static">
+        <div class="term-bar"><i class="r"></i><i class="y"></i><i class="g"></i></div>
+<pre><span class="blk b0"><span class="c"># 1. baixe e dê permissão</span>
+$ chmod +x tracesql-linux-amd64
+
+</span><span class="blk b1"><span class="c"># 2. postgres remoto &rarr; .sql para mysql local</span>
+$ ./tracesql-linux-amd64 \
+  --driver postgres \
+  --host db.exemplo.com --port 5432 \
+  --user app --database app \
+  --table orders --record 10 \
+  --depth 2 \
+  --ignore-table-suffix _log \
+  --new-ids \
+  --output-driver mysql \
+  --out ./orders_10.sql
+
+</span><span class="blk b2"><span class="c"># 3. importe</span>
+$ mysql local &lt; orders_10.sql</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="extra">
+  <div class="grid">
+    <div><b>postgres · mysql · sqlite</b><span class="pt">origem e destino independentes</span><span class="en">source and target are independent</span></div>
+    <div><b>--depth</b><span class="pt">0 = só o registro, vazio = grafo todo</span><span class="en">0 = base record only, unset = whole graph</span></div>
+    <div><b>--relations-by-name</b><span class="pt">relações sem FK declarada</span><span class="en">relations without declared FKs</span></div>
+    <div><b>--new-ids</b><span class="pt">IDs novos, referências preservadas</span><span class="en">new IDs, references preserved</span></div>
+  </div>
+  <p class="more"><span class="pt">Todas as flags e variáveis estão no <a href="https://github.com/Felipe-Cavalca/TraceSQL#readme">README</a>.</span><span class="en">All flags and variables are in the <a href="https://github.com/Felipe-Cavalca/TraceSQL#readme">README</a> (Portuguese).</span></p>
+</section>
+
+</main>
+
+<footer>
+  <span>TraceSQL · MIT</span>
+  <a href="https://github.com/Felipe-Cavalca/TraceSQL">github.com/Felipe-Cavalca/TraceSQL</a>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

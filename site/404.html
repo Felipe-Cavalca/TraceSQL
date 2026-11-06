@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404 · TraceSQL</title>
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  :root { --bg:#fbfaf7; --fg:#1c1d1f; --muted:#6a6f78; --accent:#b7860b; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0b0d10; --fg:#e8e6e1; --muted:#8a9099; --accent:#f5c542; } }
+  body { margin:0; min-height:100vh; display:grid; place-content:center; text-align:center; gap:.5rem;
+    background:var(--bg); color:var(--fg); font:16px/1.6 ui-monospace,Menlo,Consolas,monospace; padding:1rem; }
+  h1 { font-size:4rem; margin:0; color:var(--accent); }
+  p { margin:0; color:var(--muted); }
+  a { color:var(--fg); text-decoration-color:var(--accent); text-underline-offset:3px; }
+</style>
+</head>
+<body>
+  <h1>404</h1>
+  <p>registro não encontrado · record not found</p>
+  <p><a id="home" href="/">← trace<b>SQL</b></a></p>
+  <script>
+    // funciona na raiz de um subdomínio e em /TraceSQL/ (project pages)
+    var base = location.pathname.indexOf('/TraceSQL/') === 0 ? '/TraceSQL/' : '/';
+    document.getElementById('home').href = base;
+    document.querySelector('link[rel=icon]').href = base + 'favicon.svg';
+  </script>
+</body>
+</html>
