@@ -2,6 +2,8 @@ module github.com/Felipe-Cavalca/TraceSQL
 
 go 1.26.0
 
+toolchain go1.26.10
+
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/go-sql-driver/mysql v1.8.1
