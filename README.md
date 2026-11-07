@@ -132,6 +132,7 @@ O TraceSQL lê dados reais de bancos, então mantemos as dependências atualizad
 - PRs do Dependabot não geram Release automática.
 - O CI roda o `govulncheck ./...` a cada push, a cada pull request e toda segunda-feira. Ele avisa quando o código usa uma função com vulnerabilidade conhecida, na biblioteca padrão ou em dependências.
 - O CI e a Release usam a mesma versão do Go que o `go.mod` declara.
+- O driver SQLite é o `modernc.org/sqlite`, usado direto, sem o wrapper `glebarez/sqlite` e sem o GORM. O uso do `--driver sqlite` não muda.
 
 Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
