@@ -100,7 +100,7 @@ Na execução semanal, os jobs `test` e `notify` **não** rodam. Só o `vulnchec
 ### O que o job faz
 
 1. Faz o checkout do código.
-2. Instala o Go indicado no `go.mod` (`go-version-file: go.mod`), na versão de correção mais recente da mesma linha. A biblioteca padrão do Go também recebe correções de segurança. O dev deve conferir se `check-latest: true` garante isso.
+2. Instala o Go indicado no `go.mod` (`go-version-file: go.mod`). O job usa `check-latest: true`, mas com `go 1.26.0` exato no `go.mod` o `setup-go` instala exatamente a 1.26.0. Por isso o CI pode não pegar correções de patch da biblioteca padrão. Veja "Limite conhecido" abaixo.
 3. Roda `govulncheck ./...` na raiz do repositório.
 
 Resultado:
@@ -125,7 +125,7 @@ A `v1.9.0` exige Go 1.26, a versão do `go.mod`.
 
 1. Leia o relatório. Ele mostra o identificador (`GO-AAAA-NNNN`), a função chamada e a versão que corrige.
 2. Se a falha está em uma dependência, atualize-a para a versão corrigida e rode `go mod tidy`.
-3. Se a falha está na biblioteca padrão, o job já usa o Go mais recente da linha. Se a correção só existe em uma linha nova do Go, suba a versão `go` do `go.mod`.
+3. Se a falha está na biblioteca padrão, suba a versão `go` do `go.mod` para a versão de patch que corrige (por exemplo, de `1.26.0` para `1.26.N`). A edição é manual. O job não sobe o patch sozinho.
 4. Se não existe correção, abra uma issue com o identificador. Decida em conjunto se a função vulnerável pode ser evitada.
 
 ## Versão do Go
@@ -138,7 +138,7 @@ Agora:
 
 - O `go.mod` declara `go 1.26.0`. A versão sobe porque o `modernc.org/sqlite` mais recente e o `govulncheck` mais recente exigem Go 1.26.
 - O `ci.yml` e o `release.yml` leem a versão do `go.mod` (`go-version-file: go.mod`).
-- O `.devcontainer/Dockerfile` usa a imagem de Dev Container Go 1.26 (por exemplo, `mcr.microsoft.com/devcontainers/go:1-1.26-bookworm`; o dev confirma o nome da tag).
+- O `.devcontainer/Dockerfile` usa a imagem `mcr.microsoft.com/devcontainers/go:2-1.26-bookworm`. A tag `1-1.26-bookworm` não existe.
 - O README cita Go 1.26+.
 
 Quando o `go.mod` mudar, o CI e a Release acompanham. O Dev Container precisa ser atualizado à mão.
@@ -232,3 +232,27 @@ AVISO: o botão **Report a vulnerability** só aparece depois que um administrad
 3. Em *Private vulnerability reporting*, clique em **Enable**.
 
 O arquivo [SECURITY.md](SECURITY.md) é a política de segurança que o GitHub mostra na aba **Security**.
+
+## Limite conhecido: patch da biblioteca padrão no CI
+
+O job `vulncheck` usa `check-latest: true`. Mesmo assim, com `go 1.26.0` exato no `go.mod`, o `setup-go` instala exatamente a 1.26.0.
+
+Por isso, uma correção de patch da biblioteca padrão (1.26.1 ou mais nova) não chega ao CI sozinha. O `govulncheck` ainda aponta a vulnerabilidade, porque ele analisa a biblioteca padrão da versão instalada.
+
+Para tratar:
+
+1. Leia o relatório e anote a versão de patch que corrige.
+2. Suba a linha `go` do `go.mod` para essa versão (por exemplo, `go 1.26.N`).
+3. Rode `go mod tidy` e abra o PR.
+
+## Dependência atualizada pelo govulncheck: golang.org/x/text
+
+Ao rodar o `govulncheck` pela primeira vez, ele achou duas vulnerabilidades alcançáveis em `golang.org/x/text v0.37.0`: GO-2026-6629 e GO-2026-5970. O código chega nelas por `db.Open`.
+
+A correção foi atualizar para `golang.org/x/text v0.43.0`, no mesmo PR do job `vulncheck`. Depois disso, o `govulncheck` não aponta nada.
+
+## Diferença do `go mod tidy` antes da troca do driver
+
+Na branch `chore/dependabot`, `go mod tidy` remove a linha `golang.org/x/crypto v0.52.0 // indirect` do `go.mod`. Isso já acontece na `main`. A linha vem do driver `glebarez/sqlite`.
+
+Essa diferença some quando o driver passa a ser `modernc.org/sqlite`. Nas branches `ci/govulncheck` e `fix/trocar-driver-sqlite`, o `go mod tidy` não deixa diferença.
