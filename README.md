@@ -123,6 +123,16 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Quando `--depth` não é informado, o TraceSQL percorre o grafo inteiro a partir do registro inicial.
 - Quando `--ignore-table-suffix` é informado, tabelas com esse final são removidas da travessia e do schema gerado.
 
+## Segurança e dependências
+
+O TraceSQL lê dados reais de bancos, então mantemos as dependências atualizadas.
+
+- O Dependabot abre PRs semanais com atualizações das dependências Go e das GitHub Actions.
+- Para reportar uma vulnerabilidade, use a aba **Security** do repositório. Não abra issue pública. A política está em [docs/SECURITY.md](docs/SECURITY.md).
+- PRs do Dependabot não geram Release automática.
+
+Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
+
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.22, SQLite, clientes MySQL/Postgres e Docker socket para testes.
 - Testes automatizados: `go test ./...`.
