@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	_ "github.com/glebarez/sqlite"
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	_ "modernc.org/sqlite"
 )
 
 // Open retorna uma conex?o database/sql configurada para o driver informado.
