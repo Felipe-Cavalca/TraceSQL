@@ -10,8 +10,6 @@ Se você achou uma vulnerabilidade no TraceSQL, **não abra uma issue pública**
 
 O relato fica privado. A pessoa que mantém o projeto responde pelo mesmo canal.
 
-NOTA: este canal exige que um administrador tenha ativado o *Private vulnerability reporting* nas configurações do repositório.
-
 ## Versões com suporte
 
 Só a última Release recebe correções de segurança.
