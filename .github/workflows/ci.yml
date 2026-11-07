@@ -45,6 +45,8 @@ jobs:
         with:
           go-version-file: go.mod
           check-latest: true
+      # O setup-go v5 le so a linha "go" do go.mod (instala 1.26.0); o proprio comando go
+      # troca para o patch da diretiva "toolchain" (GOTOOLCHAIN=auto), com as correcoes da stdlib.
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
