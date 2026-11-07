@@ -182,8 +182,6 @@ O projeto não usa e-mail para esse fim.
 
 ### Para quem administra o repositório
 
-AVISO: o botão **Report a vulnerability** só aparece depois que um administrador ativa o *Private vulnerability reporting*.
-
 1. Abra **Settings** do repositório.
 2. Entre em **Code security**.
 3. Em *Private vulnerability reporting*, clique em **Enable**.
