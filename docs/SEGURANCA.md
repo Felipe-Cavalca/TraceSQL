@@ -100,7 +100,7 @@ Na execução semanal, os jobs `test` e `notify` **não** rodam. Só o `vulnchec
 ### O que o job faz
 
 1. Faz o checkout do código.
-2. Instala o Go indicado no `go.mod` (`go-version-file: go.mod`). O job usa `check-latest: true`, mas com `go 1.26.0` exato no `go.mod` o `setup-go` instala exatamente a 1.26.0. Por isso o CI pode não pegar correções de patch da biblioteca padrão. Veja "Limite conhecido" abaixo.
+2. Instala o Go indicado na linha `go` do `go.mod` (`go-version-file: go.mod`), hoje o 1.26.0. O job usa `check-latest: true`. Ao rodar `govulncheck`, o comando `go` troca para o Go da diretiva `toolchain` (hoje o 1.26.10). Veja "Patch da biblioteca padrão no CI: a diretiva toolchain" abaixo.
 3. Roda `govulncheck ./...` na raiz do repositório.
 
 Resultado:
@@ -125,7 +125,7 @@ A `v1.9.0` exige Go 1.26, a versão do `go.mod`.
 
 1. Leia o relatório. Ele mostra o identificador (`GO-AAAA-NNNN`), a função chamada e a versão que corrige.
 2. Se a falha está em uma dependência, atualize-a para a versão corrigida e rode `go mod tidy`.
-3. Se a falha está na biblioteca padrão, suba a versão `go` do `go.mod` para a versão de patch que corrige (por exemplo, de `1.26.0` para `1.26.N`). A edição é manual. O job não sobe o patch sozinho.
+3. Se a falha está na biblioteca padrão, suba a diretiva `toolchain` do `go.mod` para a versão de patch que corrige: `go mod edit -toolchain=go1.26.N`. A edição é manual. O job e o Dependabot não sobem o patch sozinhos.
 4. Se não existe correção, abra uma issue com o identificador. Decida em conjunto se a função vulnerável pode ser evitada.
 
 ## Versão do Go
@@ -188,16 +188,22 @@ O projeto não usa e-mail para esse fim.
 
 O arquivo [SECURITY.md](SECURITY.md) é a política de segurança que o GitHub mostra na aba **Security**.
 
-## Limite conhecido: patch da biblioteca padrão no CI
+## Patch da biblioteca padrão no CI: a diretiva toolchain
 
-O job `vulncheck` usa `check-latest: true`. Mesmo assim, com `go 1.26.0` exato no `go.mod`, o `setup-go` instala exatamente a 1.26.0.
+O `go.mod` tem duas linhas de versão do Go: `go 1.26.0` (versão mínima da linguagem) e `toolchain go1.26.10` (versão do Go que compila e testa o projeto).
 
-Por isso, uma correção de patch da biblioteca padrão (1.26.1 ou mais nova) não chega ao CI sozinha. O `govulncheck` ainda aponta a vulnerabilidade, porque ele analisa a biblioteca padrão da versão instalada.
+O `setup-go` lê só a linha `go` do `go.mod`. Por isso, ele instala o Go 1.26.0 no runner. Quem troca para a 1.26.10 é o próprio comando `go`: com `GOTOOLCHAIN=auto` (o padrão no runner), ele baixa o Go da diretiva `toolchain` e usa essa versão. Assim, `go test` e `govulncheck` rodam no Go 1.26.10.
 
-Para tratar:
+A `toolchain go1.26.10` existe porque a biblioteca padrão do Go 1.26.0 tem 16 vulnerabilidades corrigidas na 1.26.9 e na 1.26.10 (por exemplo, GO-2026-6809 em `crypto/x509` e GO-2026-6607 em `crypto/tls`). Com a 1.26.0, o `govulncheck` falhava.
 
-1. Leia o relatório e anote a versão de patch que corrige.
-2. Suba a linha `go` do `go.mod` para essa versão (por exemplo, `go 1.26.N`).
+O `check-latest: true` sozinho não resolve. Ele só procura uma versão mais nova que a pedida pela linha `go` e, com `go 1.26.0` exato, continua instalando a 1.26.0. O que vale é a diretiva `toolchain`.
+
+O Dependabot não sobe a diretiva `toolchain`. Quando sair um novo patch do Go 1.26 com correções, a subida é manual.
+
+Para tratar quando o `govulncheck` falhar por causa da biblioteca padrão:
+
+1. Leia o relatório e anote a versão de patch que corrige (por exemplo, `1.26.N`).
+2. Rode `go mod edit -toolchain=go1.26.N`.
 3. Rode `go mod tidy` e abra o PR.
 
 ## Dependência atualizada pelo govulncheck: golang.org/x/text
