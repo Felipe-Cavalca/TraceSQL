@@ -16,7 +16,7 @@ O histórico das fases do projeto e os próximos passos agora ficam em [ROADMAP.
 
 ## Requisitos
 - Para uso normal, baixe o binário da Release compatível com seu sistema.
-- Go 1.22+ é necessário apenas se você quiser rodar o projeto a partir do código-fonte.
+- Go 1.26+ (versão do `go.mod`) é necessário apenas se você quiser rodar o projeto a partir do código-fonte.
 - Dados de conexão do banco de origem (`host`, `porta`, `usuário`, `senha` e `banco`) ou um DSN válido.
 - Banco de origem suportado: `postgres`, `mysql` ou `sqlite`.
 
@@ -130,9 +130,11 @@ O TraceSQL lê dados reais de bancos, então mantemos as dependências atualizad
 - O Dependabot abre PRs semanais com atualizações das dependências Go e das GitHub Actions.
 - Para reportar uma vulnerabilidade, use a aba **Security** do repositório. Não abra issue pública. A política está em [docs/SECURITY.md](docs/SECURITY.md).
 - PRs do Dependabot não geram Release automática.
+- O CI roda o `govulncheck ./...` a cada push, a cada pull request e toda segunda-feira. Ele avisa quando o código usa uma função com vulnerabilidade conhecida, na biblioteca padrão ou em dependências.
+- O CI e a Release usam a mesma versão do Go que o `go.mod` declara.
 
 Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
 ## Desenvolvimento
-- Dev Container em `.devcontainer/` com Go 1.22, SQLite, clientes MySQL/Postgres e Docker socket para testes.
+- Dev Container em `.devcontainer/` com Go 1.26, SQLite, clientes MySQL/Postgres e Docker socket para testes.
 - Testes automatizados: `go test ./...`.
