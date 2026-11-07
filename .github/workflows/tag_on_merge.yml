@@ -12,7 +12,7 @@ permissions:
 jobs:
   create_tag_and_draft_release:
     runs-on: ubuntu-latest
-    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main'
+    if: github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' && github.event.pull_request.user.login != 'dependabot[bot]'
     outputs:
       new_tag: ${{ steps.create_tag.outputs.new_tag }}
       labels: ${{ steps.get_labels.outputs.labels }}
