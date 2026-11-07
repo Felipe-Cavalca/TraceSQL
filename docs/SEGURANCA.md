@@ -6,6 +6,8 @@ O TraceSQL abre conexões com bancos de dados e lê dados reais. Por isso, uma b
 
 Veja também: [README](../README.md), [SECURITY.md](SECURITY.md) e [ROADMAP](../ROADMAP.md).
 
+O CI também procura vulnerabilidades (`govulncheck`) e usa a mesma versão do Go que o projeto declara.
+
 ## Política de dependências
 
 1. Toda dependência nova precisa de um motivo claro no PR.
@@ -70,7 +72,101 @@ Por isso, o `tag_on_merge.yml` ignora PRs abertos pelo Dependabot:
 
 ### Limite conhecido
 
-O GitHub dá ao Dependabot um token somente de leitura. O job `notify` do `ci.yml` comenta no PR e precisa de escrita. Por isso, em PRs do Dependabot esse comentário falharia, sem afetar o resultado dos testes.
+O GitHub dá ao Dependabot um token somente de leitura. O job `notify` do `ci.yml` comenta no PR e precisa de escrita. Por isso, o `notify` não roda em PRs do Dependabot (veja "Job notify e Dependabot").
+
+## govulncheck
+
+O `govulncheck` é a ferramenta oficial do time do Go. Ela compara o seu projeto com o banco de vulnerabilidades do Go (`vuln.go.dev`).
+
+Ela só avisa quando o código **chama de fato** a função vulnerável. Isso evita alarmes falsos de uma biblioteca que está no `go.mod` mas cuja parte com falha o projeto não usa.
+
+Ela olha duas coisas:
+
+- as bibliotecas de terceiros do `go.mod`;
+- a biblioteca padrão do Go, da versão usada na compilação.
+
+### Quando roda
+
+| Gatilho | Onde |
+| --- | --- |
+| Push na `main` e nas branches `codex/**` | Job `vulncheck` do `.github/workflows/ci.yml`. |
+| Pull request para a `main` | Job `vulncheck` do `.github/workflows/ci.yml`. |
+| Toda segunda-feira, às 06:00 UTC | Gatilho `schedule` (`cron: '0 6 * * 1'`) do mesmo `ci.yml`. |
+
+A execução semanal existe porque novas vulnerabilidades surgem sem que o código mude.
+
+Na execução semanal, os jobs `test` e `notify` **não** rodam. Só o `vulncheck` roda. Para isso, `test` e `notify` têm a condição `github.event_name != 'schedule'`.
+
+### O que o job faz
+
+1. Faz o checkout do código.
+2. Instala o Go indicado na linha `go` do `go.mod` (`go-version-file: go.mod`), hoje o 1.26.0. O job usa `check-latest: true`. Ao rodar `govulncheck`, o comando `go` troca para o Go da diretiva `toolchain` (hoje o 1.26.10). Veja "Patch da biblioteca padrão no CI: a diretiva toolchain" abaixo.
+3. Roda `govulncheck ./...` na raiz do repositório.
+
+Resultado:
+
+- Nenhuma vulnerabilidade alcançável: o job passa.
+- Qualquer vulnerabilidade alcançável: o job falha e o PR não deve ser mesclado.
+
+Na execução semanal, o job que falha aparece na aba **Actions** e o GitHub avisa por e-mail. Nenhuma issue é aberta sozinha.
+
+### Versão do govulncheck
+
+O `ci.yml` usa uma versão fixa do govulncheck, na linha de comando: `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`. A versão fixa garante que o resultado não muda sozinho. Para atualizá-la, edite o `ci.yml`.
+
+A `v1.9.0` exige Go 1.26, a versão do `go.mod`.
+
+### Como reproduzir na sua máquina
+
+1. Instale o Go indicado no `go.mod`.
+2. Rode `go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`.
+
+### O que fazer quando o job falha
+
+1. Leia o relatório. Ele mostra o identificador (`GO-AAAA-NNNN`), a função chamada e a versão que corrige.
+2. Se a falha está em uma dependência, atualize-a para a versão corrigida e rode `go mod tidy`.
+3. Se a falha está na biblioteca padrão, suba a diretiva `toolchain` do `go.mod` para a versão de patch que corrige: `go mod edit -toolchain=go1.26.N`. A edição é manual. O job e o Dependabot não sobem o patch sozinhos.
+4. Se não existe correção, abra uma issue com o identificador. Decida em conjunto se a função vulnerável pode ser evitada.
+
+## Versão do Go
+
+O projeto usa uma só versão do Go: a do `go.mod`, hoje `go 1.26.0`.
+
+Antes, o `ci.yml` e o `release.yml` usavam Go `1.22` fixo, e o Dev Container também. Os testes e os binários eram feitos em uma versão diferente da que o projeto declara.
+
+Agora:
+
+- O `go.mod` declara `go 1.26.0`. A versão sobe porque o `modernc.org/sqlite` mais recente e o `govulncheck` mais recente exigem Go 1.26.
+- O `ci.yml` e o `release.yml` leem a versão do `go.mod` (`go-version-file: go.mod`).
+- O `.devcontainer/Dockerfile` usa a imagem `mcr.microsoft.com/devcontainers/go:2-1.26-bookworm`. A tag `1-1.26-bookworm` não existe.
+- O README cita Go 1.26+.
+
+Quando o `go.mod` mudar, o CI e a Release acompanham. O Dev Container precisa ser atualizado à mão.
+
+## Job notify e Dependabot
+
+O job `notify` comenta o resultado em cada pull request. O Dependabot tem token somente de leitura e não consegue comentar.
+
+Por isso, o `notify` tem a condição `github.actor != 'dependabot[bot]'` além da atual. Nos PRs do Dependabot ele não roda e não falha.
+
+## Actions fixadas por SHA
+
+No `ci.yml`, cada action é referenciada pelo SHA completo do commit (40 caracteres), e não por uma tag como `v4`. O motivo: uma tag pode ser movida para outro código, e um commit não.
+
+Cada linha traz a versão em comentário. Exemplo:
+
+```yaml
+- uses: actions/checkout@<sha-de-40-caracteres> # v4.2.2
+```
+
+O Dependabot, ao atualizar uma action, troca o SHA e o comentário juntos.
+
+Regras:
+
+- O formato é `uses: <dono>/<action>@<40 caracteres hexadecimais> # v<versão>`.
+- O SHA deve pertencer à versão escrita no comentário.
+- Não use `@main` nem tag sem SHA.
+- Por enquanto vale só para as actions do `ci.yml`. Os outros workflows continuam por tag.
 
 ## Reportar uma vulnerabilidade
 
@@ -91,3 +187,33 @@ O projeto não usa e-mail para esse fim.
 3. Em *Private vulnerability reporting*, clique em **Enable**.
 
 O arquivo [SECURITY.md](SECURITY.md) é a política de segurança que o GitHub mostra na aba **Security**.
+
+## Patch da biblioteca padrão no CI: a diretiva toolchain
+
+O `go.mod` tem duas linhas de versão do Go: `go 1.26.0` (versão mínima da linguagem) e `toolchain go1.26.10` (versão do Go que compila e testa o projeto).
+
+O `setup-go` lê só a linha `go` do `go.mod`. Por isso, ele instala o Go 1.26.0 no runner. Quem troca para a 1.26.10 é o próprio comando `go`: com `GOTOOLCHAIN=auto` (o padrão no runner), ele baixa o Go da diretiva `toolchain` e usa essa versão. Assim, `go test` e `govulncheck` rodam no Go 1.26.10.
+
+A `toolchain go1.26.10` existe porque a biblioteca padrão do Go 1.26.0 tem 16 vulnerabilidades corrigidas na 1.26.9 e na 1.26.10 (por exemplo, GO-2026-6809 em `crypto/x509` e GO-2026-6607 em `crypto/tls`). Com a 1.26.0, o `govulncheck` falhava.
+
+O `check-latest: true` sozinho não resolve. Ele só procura uma versão mais nova que a pedida pela linha `go` e, com `go 1.26.0` exato, continua instalando a 1.26.0. O que vale é a diretiva `toolchain`.
+
+O Dependabot não sobe a diretiva `toolchain`. Quando sair um novo patch do Go 1.26 com correções, a subida é manual.
+
+Para tratar quando o `govulncheck` falhar por causa da biblioteca padrão:
+
+1. Leia o relatório e anote a versão de patch que corrige (por exemplo, `1.26.N`).
+2. Rode `go mod edit -toolchain=go1.26.N`.
+3. Rode `go mod tidy` e abra o PR.
+
+## Dependência atualizada pelo govulncheck: golang.org/x/text
+
+Ao rodar o `govulncheck` pela primeira vez, ele achou duas vulnerabilidades alcançáveis em `golang.org/x/text v0.37.0`: GO-2026-6629 e GO-2026-5970. O código chega nelas por `db.Open`.
+
+A correção foi atualizar para `golang.org/x/text v0.43.0`, no mesmo PR do job `vulncheck`. Depois disso, o `govulncheck` não aponta nada.
+
+## Diferença do `go mod tidy` antes da troca do driver
+
+Na branch `chore/dependabot`, `go mod tidy` remove a linha `golang.org/x/crypto v0.52.0 // indirect` do `go.mod`. Isso já acontece na `main`. A linha vem do driver `glebarez/sqlite`.
+
+Essa diferença some quando o driver passa a ser `modernc.org/sqlite`. Nas branches `ci/govulncheck` e `fix/trocar-driver-sqlite`, o `go mod tidy` não deixa diferença.
