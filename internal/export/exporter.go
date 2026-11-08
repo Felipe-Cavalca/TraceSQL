@@ -969,9 +969,23 @@ func isIntegerColumn(column metadata.Column) bool {
 	return isIntegerType(mapColumnType("sqlite", column.Type))
 }
 
-func escapeQuotes(s string) string {
-	return strings.ReplaceAll(s, "'", "''")
+// escapeLiteral escapa o conteúdo de um literal entre aspas simples. No MySQL a barra invertida e
+// alguns caracteres de controle são escapes; nos demais dialetos só a aspa simples é dobrada.
+func escapeLiteral(dialect, s string) string {
+	s = strings.ReplaceAll(s, "'", "''")
+	if normalizeDialect(dialect) != "mysql" {
+		return s
+	}
+	return mysqlEscapes.Replace(s)
 }
+
+var mysqlEscapes = strings.NewReplacer(
+	`\`, `\\`,
+	"\x00", `\0`,
+	"\n", `\n`,
+	"\r", `\r`,
+	"\x1a", `\Z`,
+)
 
 func newTraceLogger(enabled bool) traceLogger {
 	if !enabled {
