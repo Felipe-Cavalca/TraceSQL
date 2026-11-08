@@ -569,7 +569,7 @@ func mappingTableName(table string) string {
 	var builder strings.Builder
 	builder.WriteString("__tracesql_map_")
 	for _, r := range strings.ToLower(table) {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '"' || r == '`' {
 			builder.WriteRune(r)
 			continue
 		}
@@ -804,12 +804,11 @@ func quoteIdent(driver, ident string) string {
 		return ident
 	}
 
-	clean := strings.ReplaceAll(ident, "`", "")
-	clean = strings.ReplaceAll(clean, `"`, "")
-	if normalizeDialect(driver) == "postgres" {
-		return fmt.Sprintf(`"%s"`, clean)
+	quote := `"`
+	if normalizeDialect(driver) == "mysql" {
+		quote = "`"
 	}
-	return fmt.Sprintf("`%s`", clean)
+	return quote + strings.ReplaceAll(ident, quote, quote+quote) + quote
 }
 
 func joinQuoted(driver string, identifiers []string) string {

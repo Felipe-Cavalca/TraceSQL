@@ -123,6 +123,7 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Quando `--depth` não é informado, o TraceSQL percorre o grafo inteiro a partir do registro inicial.
 - Quando `--ignore-table-suffix` é informado, tabelas com esse final são removidas da travessia e do schema gerado.
 - Cada valor vira um literal conforme a categoria do tipo da coluna (numérico, booleano, binário, JSON, data/hora ou texto) e o dialeto de saída. Tipo desconhecido sai como texto entre aspas. Os detalhes estão em [docs/EXPORTACAO.md](docs/EXPORTACAO.md).
+- Nomes de tabelas e colunas saem entre aspas. Se o nome tem o caractere de aspas do dialeto, ele é duplicado (`a"b` vira `"a""b"` no postgres), e o nome não muda. Veja [docs/IDENTIFICADORES.md](docs/IDENTIFICADORES.md).
 
 ## Segurança e dependências
 
@@ -143,6 +144,7 @@ Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
 ## Documentação
 - [docs/EXPORTACAO.md](docs/EXPORTACAO.md): como cada valor vira literal SQL, por tipo e por dialeto de saída.
+- [docs/IDENTIFICADORES.md](docs/IDENTIFICADORES.md): como nomes de tabelas e colunas são escritos e escapados no SQL.
 - [docs/SEGURANCA.md](docs/SEGURANCA.md): política de dependências, Dependabot e `govulncheck`.
 - [docs/SECURITY.md](docs/SECURITY.md): como reportar uma vulnerabilidade.
 - [ROADMAP.md](ROADMAP.md): fases do projeto e próximos passos.

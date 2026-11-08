@@ -595,6 +595,6 @@ func scanSingleStringColumn(rows *sql.Rows) ([]string, error) {
 }
 
 func quoteSQLiteIdent(ident string) string {
-	clean := strings.ReplaceAll(ident, `"`, "")
+	clean := strings.ReplaceAll(ident, `"`, `""`)
 	return fmt.Sprintf(`"%s"`, clean)
 }
