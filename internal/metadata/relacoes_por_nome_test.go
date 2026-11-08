@@ -32,7 +32,7 @@ func tabelaT(nome string, cols ...string) Table {
 func catalogoT(fks []ForeignKey, tabelas ...Table) Catalog {
 	m := map[string]Table{}
 	for _, t := range tabelas {
-		m[t.Name] = t
+		m[strings.ToLower(t.Name)] = t
 	}
 	return Catalog{tables: m, ForeignKeys: fks}
 }
@@ -120,7 +120,7 @@ func TestInferenciaPorNomeCasosPositivos(t *testing.T) {
 			catalogo: catalogoT(nil, tabelaT("users", "id*", "tenant*"), tabelaT("orders", "id*", "user_id")),
 			esperado: []ForeignKey{fkT("orders", "user_id", "users", "id")}},
 		{nome: "11 tipos diferentes são aceitos",
-			catalogo: catalogoT(nil, tabelaT("users", "id*:INTEGER"), tabelaT("orders", "id*", "user_id:TEXT")),
+			catalogo: catalogoT(nil, tabelaT("users", "id:INTEGER*"), tabelaT("orders", "id*", "user_id:TEXT")),
 			esperado: []ForeignKey{fkT("orders", "user_id", "users", "id")}},
 	})
 }

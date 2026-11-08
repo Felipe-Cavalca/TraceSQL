@@ -60,6 +60,20 @@ func TestRelacoesPorNomeExportadorCaso1e38PluralComS(t *testing.T) {
 	rpnNaoContem(t, dump, "(20, 2, 99)", "'Bob'")
 }
 
+// Caso 4 ponta a ponta: maiúsculas, passando pela leitura real do esquema.
+func TestRelacoesPorNomeExportadorCaso4Maiusculas(t *testing.T) {
+	dump := rpnExporta(t, config.Config{Table: "Users", Record: "1", RelationsByName: true}, []string{
+		"CREATE TABLE Users (id INTEGER PRIMARY KEY, name TEXT)",
+		"CREATE TABLE Orders (id INTEGER PRIMARY KEY, USER_ID INTEGER)",
+		"INSERT INTO Users (id, name) VALUES (1, 'Alice')",
+		"INSERT INTO Orders (id, USER_ID) VALUES (10, 1)",
+	})
+	containsAll(t, dump, `INSERT INTO "Orders" ("id", "USER_ID") VALUES (10, 1);`)
+	if !strings.Contains(strings.ToLower(dump), `foreign key ("user_id") references "users" ("id")`) {
+		t.Fatalf("esperava FOREIGN KEY de USER_ID para Users:\n%s", dump)
+	}
+}
+
 // Caso 5: coluna no plural.
 func TestRelacoesPorNomeExportadorCaso5ColunaNoPlural(t *testing.T) {
 	dump := rpnExporta(t, config.Config{Table: "users", Record: "1", RelationsByName: true}, []string{
