@@ -15,9 +15,9 @@ func TestRunExportNewIDsReferenciaComBarraEAspa(t *testing.T) {
 		dialeto string
 		want    string
 	}{
-		{"mysql", "WHERE `old_id` = 'a\\b''c')"},
+		{"mysql", "WHERE `old_id` = " + `'a\\b''c')`},
 		{"postgres", `WHERE "old_id" = 'a\b''c')`},
-		{"sqlite", "WHERE `old_id` = 'a\b''c')"},
+		{"sqlite", "WHERE `old_id` = " + `'a\b''c')`},
 	}
 	for _, c := range casos {
 		t.Run(c.dialeto, func(t *testing.T) {
