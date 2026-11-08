@@ -140,11 +140,13 @@ Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.26, SQLite, clientes MySQL/Postgres e Docker socket para testes.
-- Testes automatizados: `go test ./...`.
+- Testes automatizados: `go test ./...` (unitários, mais os de integração com SQLite em memória).
+- Testes de integração com Postgres e MySQL reais: veja [docs/TESTES.md](docs/TESTES.md).
 
 ## Documentação
 - [docs/EXPORTACAO.md](docs/EXPORTACAO.md): como cada valor vira literal SQL, por tipo e por dialeto de saída.
 - [docs/IDENTIFICADORES.md](docs/IDENTIFICADORES.md): como nomes de tabelas e colunas são escritos e escapados no SQL.
+- [docs/TESTES.md](docs/TESTES.md): testes de integração com Postgres, MySQL e SQLite reais, a fixture, a matriz origem e destino e como rodar local e no CI.
 - [docs/SEGURANCA.md](docs/SEGURANCA.md): política de dependências, Dependabot e `govulncheck`.
 - [docs/SECURITY.md](docs/SECURITY.md): como reportar uma vulnerabilidade.
 - [ROADMAP.md](ROADMAP.md): fases do projeto e próximos passos.
