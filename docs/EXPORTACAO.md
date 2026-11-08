@@ -26,6 +26,17 @@ Antes, o código procurava pedaços como `int` dentro do nome do tipo. Por isso 
 | `bytea` | bytes `Hi` | `'Hi'` (texto) | `'\x4869'` no postgres, `X'4869'` no mysql e no sqlite |
 | `jsonb` | `{"a":1}` | `'{"a":1}'` | `'{"a":1}'` (igual, agora por categoria explícita) |
 
+### O segundo erro: a barra invertida no MySQL
+
+Dentro de um texto entre aspas, o MySQL (no modo padrão) trata `\` como início de escape. Antes, o TraceSQL só dobrava a aspa simples e deixava a barra passar. O valor mudava ou o `INSERT` quebrava, e um texto malicioso podia fechar a aspa e injetar comandos ao restaurar o arquivo.
+
+| Valor lido | Saída incorreta (antes, mysql) | O que o MySQL entende | Saída correta (mysql) |
+| --- | --- | --- | --- |
+| `C:\temp` | `'C:\temp'` | `C:` + tabulação + `emp` (o `\t` virou tabulação) | `'C:\\temp'` |
+| `C:\temp\'x` | `'C:\temp\''x'` | a aspa dobrada é lida como escapada e o texto continua aberto | `'C:\\temp\\''x'` |
+
+Por isso o escape do conteúdo depende do **dialeto de saída**. No postgres e no sqlite a barra invertida é um caractere comum e não deve ser alterada.
+
 Outra regra de segurança: **valor numérico só sai cru se o texto for de fato um número**. Se não for, sai entre aspas. Assim, um texto inesperado nunca entra no SQL sem aspas.
 
 ## Exemplo
@@ -38,6 +49,7 @@ Uma linha de `orders` no postgres, exportada para mysql:
 | `total` | `NUMERIC` | `99.90` | `99.90` |
 | `paid` | `BOOL` | `t` | `TRUE` |
 | `note` | `TEXT` | `it's ok` | `'it''s ok'` |
+| `path` | `TEXT` | `C:\temp` | `'C:\\temp'` (no postgres e no sqlite seria `'C:\temp'`) |
 | `meta` | `JSONB` | `{"a":1}` | `'{"a":1}'` |
 | `created_at` | `TIMESTAMPTZ` | `2024-05-01T10:00:00Z` | `'2024-05-01 10:00:00'` |
 | `deleted_at` | `TIMESTAMPTZ` | (nulo) | `NULL` |
@@ -105,7 +117,27 @@ Regra geral: se o valor lido é nulo (`Valid` falso), o literal é `NULL`, em qu
 | `datetime` | texto entre aspas, sem mudar | texto entre aspas, com ajuste de data (abaixo) | texto entre aspas, com ajuste de data (abaixo) |
 | `text` | texto entre aspas | texto entre aspas | texto entre aspas |
 
-**Texto entre aspas:** cada `'` do valor vira `''`, e o resultado fica entre aspas simples. Mais nada muda. A barra invertida no MySQL é outro assunto (issue #63) e não faz parte desta regra.
+**Texto entre aspas:** vale para todo literal que sai entre aspas simples: `text`, `json`, `datetime`, tipo desconhecido, array, e o texto de alternativa de um numérico ou booleano inválido. Só o binário fica de fora (ele usa hexadecimal). O conteúdo é escapado conforme o dialeto de saída e o resultado fica entre aspas simples:
+
+| Caractere no valor | postgres | mysql | sqlite |
+| --- | --- | --- | --- |
+| `'` (aspa simples) | `''` | `''` | `''` |
+| `\` (barra invertida) | `\` (inalterada) | `\\` | `\` (inalterada) |
+| NUL (byte `0x00`) | inalterado | `\0` | inalterado |
+| LF (quebra de linha, `0x0A`) | inalterada | `\n` | inalterada |
+| CR (retorno de carro, `0x0D`) | inalterado | `\r` | inalterado |
+| Ctrl-Z (byte `0x1A`) | inalterado | `\Z` | inalterado |
+| `"`, tabulação e Unicode | inalterados | inalterados | inalterados |
+
+No mysql, `\0`, `\n`, `\r` e `\Z` são dois caracteres: a barra invertida e a letra (ou o dígito). Cada caractere do valor é tratado uma só vez: a barra criada por um escape não é escapada de novo. Assim, um `\n` escrito no valor (barra e `n`) vira `\\n` no mysql e continua `\n` nos outros dois.
+
+Por que cada dialeto é assim:
+
+- **mysql:** com `NO_BACKSLASH_ESCAPES` desligado (o padrão), a barra é escape. O conjunto é o de `mysql_real_escape_string`, menos a aspa dupla, que dentro de aspas simples não precisa de escape. NUL e quebras de linha também são escapados para o arquivo não ter byte NUL cru nem valores quebrando linha.
+- **postgres:** com `standard_conforming_strings = on` (o padrão desde o PostgreSQL 9.1), a barra é um caractere comum dentro de `'...'`. Por isso **não se usa** a forma `E'...'`. NUL não existe em texto do postgres, então não há escape que o salve.
+- **sqlite:** a barra é sempre um caractere comum. NUL e quebras de linha ficam dentro de `'...'` como estão.
+
+O escape tem de ser a inversa exata da leitura do banco de destino: ao restaurar o arquivo, o texto guardado é idêntico ao original (veja os testes de ida e volta abaixo).
 
 **Numérico:** o texto só sai cru se casar com `^-?(\d+(\.\d+)?|\.\d+)([eE][+-]?\d+)?$`. Se não casar, sai como texto entre aspas. Exemplos: `NaN`, `Infinity`, `-Infinity` e texto vazio saem como `'NaN'`, `'Infinity'`, `'-Infinity'` e `''`.
 
@@ -137,10 +169,18 @@ Pontos que o código e a issue não definiam. Os padrões escolhidos são os mai
 8. **Datas só são ajustadas para mysql e sqlite**, e só para o formato com `T` e `Z`. Não há conversão de fuso.
 9. **Binário usa hexadecimal minúsculo**, sem conversão de fuso nem de codificação.
 10. **`tinyint(1)` só é booleano quando o nome inteiro, aparado e em minúsculas, é exatamente `tinyint(1)`.** Com qualquer outra palavra junto, como `tinyint(1) unsigned`, o tipo é numérico.
+11. **A barra invertida é escapada só no mysql**, e só no mysql NUL, LF, CR e Ctrl-Z viram escape. Postgres e sqlite não ganham `E'...'` nem outro prefixo.
+12. **Aspa dupla e tabulação nunca são escapadas.** Dentro de aspas simples, o mysql não precisa disso.
+13. **O escape vale para todo literal entre aspas**, de qualquer categoria. Não vale para o binário.
+14. **Dialeto desconhecido ou vazio usa o escape do sqlite** (só dobra `'`).
 
 ## Limitações conhecidas
 
-- A barra invertida em texto no MySQL (issue #63) e o escape de nomes de tabela e coluna (issue #64) são tratados à parte.
+- O escape de nomes de tabela e coluna (issue #64) é tratado à parte.
+- No postgres, o arquivo supõe `standard_conforming_strings = on` (o padrão). Com o ajuste desligado no destino, a barra invertida em texto seria lida como escape. O TraceSQL não escreve `SET standard_conforming_strings` no arquivo.
+- No mysql, o arquivo supõe `NO_BACKSLASH_ESCAPES` desligado (o padrão). Com ele ligado, `\\` seria lido como duas barras.
+- NUL em texto não pode ser restaurado no postgres (o banco recusa). O TraceSQL escreve o byte como veio e deixa o erro aparecer.
+- O escape supõe texto em UTF-8. Conjuntos de caracteres em que um byte de caractere multibyte pode valer `0x5C` (como GBK e SJIS) não são tratados.
 - Tipos espaciais do MySQL (`geometry`, `point`) chegam como bytes e saem como texto entre aspas. Eles não são restaurados corretamente.
 - Os nomes exatos dos tipos dependem do driver de origem. A lista do Passo 2 cobre os nomes que `pgx`, `go-sql-driver/mysql` e `modernc.org/sqlite` informam.
 
@@ -353,6 +393,86 @@ O valor é uma `string` Go com os bytes brutos. `Hi` são os bytes `0x48 0x69`.
 | `dialeto_maiusculo` | `MySQL` | `blob` | `Hi` | `X'4869'` |
 | `dialeto_desconhecido_usa_sqlite` | `oracle` | `bool` | `true` | `1` |
 | `dialeto_vazio_usa_sqlite` | (vazio) | `bool` | `true` | `1` |
+
+**Escape do conteúdo (issue #63)**
+
+Notação desta seção, só para escrever os casos:
+
+- O texto está em código e é o texto real, caractere por caractere.
+- `<NUL>`, `<LF>`, `<CR>`, `<TAB>` e `<SUB>` (Ctrl-Z) são **um único byte** (`0x00`, `0x0A`, `0x0D`, `0x09`, `0x1A`). No teste, escreva com `"\x00"`, `"\n"`, `"\r"`, `"\t"` e `"\x1a"`.
+- No mysql, `\n`, `\r`, `\0` e `\Z` na saída são **dois caracteres** (barra e letra ou dígito), não um byte de controle.
+- Em todos os casos o tipo é `text`, salvo indicação. A coluna "Valor" é o valor lido (`Valid: true`).
+- Nos casos em que as três saídas são iguais, a coluna é única.
+
+Saídas por dialeto (use `t.Run` por caso e por dialeto):
+
+| Nome do caso | Valor | postgres | mysql | sqlite |
+| --- | --- | --- | --- | --- |
+| `barra_simples` | `C:\temp` | `'C:\temp'` | `'C:\\temp'` | `'C:\temp'` |
+| `barra_dupla` | `a\\b` | `'a\\b'` | `'a\\\\b'` | `'a\\b'` |
+| `barra_no_fim` | `abc\` | `'abc\'` | `'abc\\'` | `'abc\'` |
+| `so_barra` | `\` | `'\'` | `'\\'` | `'\'` |
+| `barra_n_escrito` | `\n` (barra e `n`) | `'\n'` | `'\\n'` | `'\n'` |
+| `barra_zero_escrito` | `\0` (barra e `0`) | `'\0'` | `'\\0'` | `'\0'` |
+| `aspa_e_barra` | `it's \ ok` | `'it''s \ ok'` | `'it''s \\ ok'` | `'it''s \ ok'` |
+| `barra_antes_de_aspa` | `C:\temp\'x` | `'C:\temp\''x'` | `'C:\\temp\\''x'` | `'C:\temp\''x'` |
+| `injecao_aspa` | `'; DROP TABLE x;--` | `'''; DROP TABLE x;--'` | `'''; DROP TABLE x;--'` | `'''; DROP TABLE x;--'` |
+| `injecao_com_barra` | `\'; DROP TABLE x;--` | `'\''; DROP TABLE x;--'` | `'\\''; DROP TABLE x;--'` | `'\''; DROP TABLE x;--'` |
+| `nul` | `a<NUL>b` | `'a<NUL>b'` | `'a\0b'` | `'a<NUL>b'` |
+| `quebra_lf` | `l1<LF>l2` | `'l1<LF>l2'` | `'l1\nl2'` | `'l1<LF>l2'` |
+| `quebra_cr` | `l1<CR>l2` | `'l1<CR>l2'` | `'l1\rl2'` | `'l1<CR>l2'` |
+| `quebra_crlf` | `l1<CR><LF>l2` | `'l1<CR><LF>l2'` | `'l1\r\nl2'` | `'l1<CR><LF>l2'` |
+| `barra_antes_de_lf` | `a\<LF>b` | `'a\<LF>b'` | `'a\\\nb'` | `'a\<LF>b'` |
+| `ctrl_z` | `a<SUB>b` | `'a<SUB>b'` | `'a\Zb'` | `'a<SUB>b'` |
+| `tabulacao` | `a<TAB>b` | `'a<TAB>b'` | `'a<TAB>b'` | `'a<TAB>b'` |
+| `aspas_duplas` | `say "hi"` | `'say "hi"'` | `'say "hi"'` | `'say "hi"'` |
+| `unicode` | `ação 日本 😀` | `'ação 日本 😀'` | `'ação 日本 😀'` | `'ação 日本 😀'` |
+| `unicode_com_barra` | `日\本` | `'日\本'` | `'日\\本'` | `'日\本'` |
+| `vazio` | (vazio) | `''` | `''` | `''` |
+| `sem_caractere_especial` | `abc` | `'abc'` | `'abc'` | `'abc'` |
+
+No caso `barra_antes_de_lf` do mysql, a saída é: aspa, `a`, duas barras, barra e `n`, `b`, aspa (ou seja, `a`, `\\`, `\n`, `b`).
+
+Outras categorias e outros caminhos que passam pelo mesmo escape:
+
+| Nome do caso | Tipo | Valor | postgres | mysql | sqlite |
+| --- | --- | --- | --- | --- | --- |
+| `json_com_barra` | `jsonb` | `{"p":"C:\\temp"}` | `'{"p":"C:\\temp"}'` | `'{"p":"C:\\\\temp"}'` | `'{"p":"C:\\temp"}'` |
+| `json_com_aspa_e_barra` | `json` | `{"a":"it's \\"}` | `'{"a":"it''s \\"}'` | `'{"a":"it''s \\\\"}'` | `'{"a":"it''s \\"}'` |
+| `array_com_barra` | `_text` | `{"a\\b"}` | `'{"a\\b"}'` | `'{"a\\\\b"}'` | `'{"a\\b"}'` |
+| `desconhecido_com_barra` | `my_custom_type` | `\x41` | `'\x41'` | `'\\x41'` | `'\x41'` |
+| `data_fora_do_formato_com_barra` | `datetime` | `a\b` | `'a\b'` | `'a\\b'` | `'a\b'` |
+| `data_valida_nao_muda` | `timestamp` | `2024-05-01T10:00:00Z` | `'2024-05-01T10:00:00Z'` | `'2024-05-01 10:00:00'` | `'2024-05-01 10:00:00'` |
+| `numerico_invalido_com_barra` | `int` | `1\2` | `'1\2'` | `'1\\2'` | `'1\2'` |
+| `bool_invalido_com_barra` | `bool` | `x\y` | `'x\y'` | `'x\\y'` | `'x\y'` |
+| `binario_nao_e_escapado` | `bytea` (ou `blob` no mysql e no sqlite) | o byte `0x5C` | `'\x5c'` | `X'5c'` | `X'5c'` |
+| `nulo_continua_null` | `text` | (nulo) | `NULL` | `NULL` | `NULL` |
+
+Nos casos `json_*`, `array_*` e `data_*`, a barra dupla do valor lido são duas barras reais (JSON já escapado).
+
+Dialetos (valor `a\b'c`, tipo `text`):
+
+| Nome do caso | Dialeto | Saída |
+| --- | --- | --- |
+| `dialeto_mysql_maiusculo` | `MySQL` | `'a\\b''c'` |
+| `dialeto_pg` | `pg` | `'a\b''c'` |
+| `dialeto_postgresql` | `postgresql` | `'a\b''c'` |
+| `dialeto_sqlite3` | `sqlite3` | `'a\b''c'` |
+| `dialeto_desconhecido` | `oracle` | `'a\b''c'` |
+| `dialeto_vazio` | (vazio) | `'a\b''c'` |
+
+Referência com `--new-ids`: `buildMappedReferenceExpression` usa o mesmo literal. Um valor antigo `a\b` de tipo `text` no dialeto mysql aparece como `'a\\b'` dentro do `WHERE old_id = ...`, e no postgres como `'a\b'`.
+
+**Ida e volta (round-trip)**
+
+Além da tabela, cada dialeto tem um teste que escreve um conjunto de valores, lê de volta e compara com o original. O conjunto mínimo (cada item é um valor de teste): `abc`, `C:\temp`, `a\\b`, `abc\`, `\`, `it's`, `C:\temp\'x`, `'; DROP TABLE x;--`, `\'; DROP TABLE x;--`, `a<NUL>b` (menos no postgres), `l1<LF>l2`, `l1<CR><LF>l2`, `a<TAB>b`, `a<SUB>b`, `say "hi"`, `ação 日本 😀`, `\n` (barra e `n`) e o texto vazio.
+
+- **sqlite:** abrir um SQLite em memória (o `modernc.org/sqlite` que o projeto já usa), executar `SELECT <literal>` com o literal que `formatValue("sqlite", "text", ...)` devolve e conferir que o valor lido é idêntico ao original. Vale também para `formatValue("sqlite", ...)` dentro de um `INSERT` seguido de `SELECT`. Como o banco aceita NUL dentro de `'...'`, o item com NUL entra.
+- **mysql e postgres:** não há banco nos testes unitários. Cada teste escreve um decodificador pequeno que aplica a regra de leitura do dialeto ao literal e compara com o original:
+  - decodificador do mysql: tira as aspas externas; lê da esquerda para a direita; `''` vale `'`; `\\` vale `\`; `\0` vale NUL; `\n` vale LF; `\r` vale CR; `\Z` vale Ctrl-Z; `\'` vale `'`; os demais caracteres valem eles mesmos. Uma aspa simples sozinha no meio do conteúdo, ou uma barra no fim sem caractere seguinte, falha o teste.
+  - decodificador do postgres: tira as aspas externas e troca `''` por `'`; a barra não tem significado. Uma aspa simples sozinha no meio do conteúdo falha o teste.
+- Em todos, o teste também confere que **nenhuma aspa simples sozinha** aparece dentro do literal (toda `'` do conteúdo vem em par), o que garante que o texto não consegue fechar o literal.
+- Teste negativo (mysql): o decodificador do mysql aplicado ao literal que o código antigo geraria para `C:\temp\'x` (`'C:\temp\''x'`) **não** devolve o valor original. Isso mostra que o teste pega o erro.
 
 ### Teste de integração (opcional)
 
