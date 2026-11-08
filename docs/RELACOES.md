@@ -97,7 +97,9 @@ Os testes ficam em `internal/metadata/metadata_test.go` e usam o método `Catalo
 
 Notação: `T(col*, col, ...)` é uma tabela. A coluna com `*` é chave primária. `FK` é uma foreign key já declarada, no formato `tabela.coluna -> destino.coluna`. `esperado` lista só as relações **adicionadas**. A lista completa de relações do catálogo é as `FK` declaradas mais as adicionadas.
 
-Todos os casos devem rodar também no nível do exportador (`internal/export`, com SQLite em memória e `RelationsByName: true`) para pelo menos os casos 1, 5, 14 e 21: o arquivo `.sql` deve conter, ou não, o `FOREIGN KEY` e as linhas relacionadas.
+**Atenção ao montar o `Catalog` à mão nos testes unitários.** O catálogo guarda as tabelas por chave em minúsculas (`users`), enquanto `Table.Name` mantém a caixa original (`Users`). Um `Catalog` montado com chave de caixa mista (por exemplo `"Users"`) não infere nada nos testes unitários. Isso é só um limite de como o teste monta o catálogo. No uso real, o catálogo vem de `Discover` e a inferência ignora maiúsculas e minúsculas. Por isso o caso 4 (`Users` e `USER_ID`) também é coberto de ponta a ponta no exportador.
+
+Todos os casos devem rodar também no nível do exportador (`internal/export`, com SQLite em memória e `RelationsByName: true`) para pelo menos os casos 1, 4, 5, 14 e 21: o arquivo `.sql` deve conter, ou não, o `FOREIGN KEY` e as linhas relacionadas.
 
 ### Casos que devem criar relação
 
