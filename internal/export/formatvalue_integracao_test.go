@@ -78,3 +78,36 @@ func TestRunExportValorNaoNumericoEmColunaComNomeContendoInt(t *testing.T) {
 		t.Fatalf("ponto deveria sair entre aspas e nulo como NULL:\n%s", dump)
 	}
 }
+
+// Exceção booleana do tinyint(1): só vale para o nome inteiro (docs/EXPORTACAO.md, Passo 1 e Decisão 10).
+func TestTinyint1UnsignedEhNumerico(t *testing.T) {
+	fvRodarClasses(t, []fvClasse{
+		{"tinyint_1_unsigned_maiusculo", "TINYINT(1) UNSIGNED", categoryNumeric},
+		{"tinyint_1_unsigned_minusculo", "tinyint(1) unsigned", categoryNumeric},
+		{"tinyint_1_bool_para_comparacao", "TINYINT(1)", categoryBool},
+		{"tinyint_1_aparado", "  tinyint(1) ", categoryBool},
+	})
+
+	var casos []fvCaso
+	for _, tipo := range []string{"tinyint(1) unsigned", "TINYINT(1) UNSIGNED"} {
+		casos = append(casos,
+			fvCaso{"um/" + tipo, "", tipo, fvVal("1"), "1"},
+			fvCaso{"zero/" + tipo, "", tipo, fvVal("0"), "0"},
+		)
+	}
+	fvRodar(t, fvEmTodos(casos))
+
+	fvRodar(t, []fvCaso{
+		{"bool_postgres", "postgres", "TINYINT(1)", fvVal("1"), "TRUE"},
+		{"bool_mysql", "mysql", "TINYINT(1)", fvVal("0"), "FALSE"},
+		{"bool_sqlite", "sqlite", "TINYINT(1)", fvVal("1"), "1"},
+	})
+}
+
+func TestFormatValueBordasDeDataEDialetoVazioDaDoc(t *testing.T) {
+	fvRodar(t, []fvCaso{
+		{"data_t_sem_segundos_mysql", "mysql", "datetime", fvVal("2024-05-01T10:00"), "'2024-05-01T10:00'"},
+		{"data_fora_do_formato_sqlite", "sqlite", "timestamp", fvVal("2024-05-01T10:00:00 Z"), "'2024-05-01T10:00:00 Z'"},
+		{"dialeto_vazio_usa_sqlite", "", "bool", fvVal("true"), "1"},
+	})
+}
