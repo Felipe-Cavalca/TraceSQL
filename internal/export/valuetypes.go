@@ -102,11 +102,11 @@ func formatValue(outputDriver, typeName string, v sql.NullString) string {
 		return "X'" + encoded + "'"
 	case categoryDatetime:
 		if dialect != "postgres" {
-			return quoteText(adjustDatetime(v.String))
+			return quoteText(dialect, adjustDatetime(v.String))
 		}
 	}
 
-	return quoteText(v.String)
+	return quoteText(dialect, v.String)
 }
 
 func boolLiteral(dialect, value string) (string, bool) {
@@ -145,6 +145,7 @@ func adjustDatetime(value string) string {
 	return m[1] + " " + m[2] + offset
 }
 
-func quoteText(s string) string {
-	return "'" + escapeQuotes(s) + "'"
+// quoteText escreve o texto como literal entre aspas simples, escapando o conteúdo conforme o dialeto.
+func quoteText(dialect, s string) string {
+	return "'" + escapeLiteral(dialect, s) + "'"
 }
