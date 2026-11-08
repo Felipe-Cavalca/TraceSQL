@@ -161,3 +161,44 @@ Estes casos conferem o ponto principal: o banco entende o nome escapado. Crie um
 ### Exportação ponta a ponta
 
 Exporte um registro de uma tabela `t"x` com coluna `c"y` (e uma chave estrangeira para outra tabela com aspas no nome) para o dialeto `sqlite`. Confira que o `.sql` contém `"t""x"` e `"c""y"`, que não contém `"tx"` nem `"cy"`, e que executar o `.sql` num banco SQLite novo recria a tabela com o nome original.
+
+### Bytes e caracteres incomuns
+
+Nada além do caractere de aspas do dialeto é alterado. Isto vale também para texto que não é UTF-8 válido, byte nulo e quebra de linha. A função não entra em pânico.
+
+| Nome do caso | Dialeto | Entrada | Saída |
+|---|---|---|---|
+| `utf8_invalido_postgres` | `postgres` | `a` + byte `0xFF` + `b` | `"` + `a` + byte `0xFF` + `b` + `"` |
+| `byte_nulo_mysql` | `mysql` | `a` + byte `0x00` + `b` | `` ` `` + `a` + byte `0x00` + `b` + `` ` `` |
+| `quebra_de_linha_sqlite` | `sqlite` | `a`, quebra de linha, `b` | `"` + `a`, quebra de linha, `b` + `"` |
+
+## Catálogo do SQLite
+
+Quando o banco de origem é SQLite, o TraceSQL lê o esquema com `PRAGMA table_info` e `PRAGMA foreign_key_list` (pacote `internal/metadata`). Nessas consultas o nome da tabela também vai entre aspas duplas, e o `"` do nome é duplicado.
+
+Antes, o `"` era removido. Para uma tabela chamada `t"x`, o PRAGMA consultava a tabela `tx`, que não existe. O catálogo saía vazio, e a tabela não era exportada.
+
+Agora o PRAGMA recebe `"t""x"` e devolve as colunas e as chaves estrangeiras da tabela `t"x`. Uma crase no nome não precisa de escape nesse caso, porque o delimitador é `"`.
+
+Como testar: crie um SQLite em memória com as tabelas `t"x` (colunas `id` e `c"y`) e ``t`x``, rode a descoberta do esquema e confira que as duas tabelas aparecem, com as colunas e as chaves estrangeiras corretas e com os nomes originais.
+
+## Tabela de mapa do `--new-ids`
+
+Com `--new-ids`, o TraceSQL cria uma tabela temporária de mapeamento por tabela exportada. O nome dela é `__tracesql_map_<tabela>`, onde `<tabela>` é o nome da tabela original, assim:
+
+1. Letras são passadas para minúsculas.
+2. Letras, dígitos, `"` e crase ficam como estão.
+3. Qualquer outro caractere (espaço, ponto, hífen e assim por diante) vira `_`.
+
+Depois, o nome inteiro passa por `quoteIdent` como qualquer outro. Por isso o `"` ou a crase que veio do nome da tabela é duplicado ao escrever.
+
+| Nome do caso | Tabela | Dialeto | Nome da tabela de mapa no SQL |
+|---|---|---|---|
+| `mapa_simples` | `users` | `sqlite` | `"__tracesql_map_users"` |
+| `mapa_aspas_duplas` | `t"x` | `sqlite` | `"__tracesql_map_t""x"` |
+| `mapa_crase_sqlite` | ``t`x`` | `sqlite` | ``"__tracesql_map_t`x"`` |
+| `mapa_crase_mysql` | ``t`x`` | `mysql` | ``` `__tracesql_map_t``x` ``` |
+| `mapa_espaco` | `my table` | `sqlite` | `"__tracesql_map_my_table"` |
+| `mapa_ponto` | `a.b` | `sqlite` | `"__tracesql_map_a_b"` |
+
+Como testar: exporte um registro com `--new-ids` de uma tabela com cada nome acima (dialeto de saída `sqlite`) e confira que o `.sql` contém `CREATE TEMP TABLE <nome do mapa>` e um `INSERT INTO <nome do mapa> ("old_id", "new_id")`.
