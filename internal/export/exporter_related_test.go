@@ -124,14 +124,14 @@ func TestRunExportNewIDsComRelacoesNoDestinoSQLite(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TEMP TABLE `__tracesql_map_users`",
-		"CREATE TEMP TABLE `__tracesql_map_orders`",
-		"CREATE TEMP TABLE `__tracesql_map_order_items`",
-		"INSERT INTO `users` (`name`) VALUES ('Alice');",
-		"INSERT INTO `__tracesql_map_users` (`old_id`, `new_id`) VALUES (1, last_insert_rowid());",
-		"INSERT INTO `orders` (`user_id`, `total`) VALUES ((SELECT `new_id` FROM `__tracesql_map_users` WHERE `old_id` = 1), 99);",
-		"INSERT INTO `__tracesql_map_orders` (`old_id`, `new_id`) VALUES (10, last_insert_rowid());",
-		"INSERT INTO `order_items` (`order_id`, `sku`) VALUES ((SELECT `new_id` FROM `__tracesql_map_orders` WHERE `old_id` = 10), 'A-1');",
+		`CREATE TEMP TABLE "__tracesql_map_users"`,
+		`CREATE TEMP TABLE "__tracesql_map_orders"`,
+		`CREATE TEMP TABLE "__tracesql_map_order_items"`,
+		`INSERT INTO "users" ("name") VALUES ('Alice');`,
+		`INSERT INTO "__tracesql_map_users" ("old_id", "new_id") VALUES (1, last_insert_rowid());`,
+		`INSERT INTO "orders" ("user_id", "total") VALUES ((SELECT "new_id" FROM "__tracesql_map_users" WHERE "old_id" = 1), 99);`,
+		`INSERT INTO "__tracesql_map_orders" ("old_id", "new_id") VALUES (10, last_insert_rowid());`,
+		`INSERT INTO "order_items" ("order_id", "sku") VALUES ((SELECT "new_id" FROM "__tracesql_map_orders" WHERE "old_id" = 10), 'A-1');`,
 	)
 }
 
@@ -192,11 +192,11 @@ func TestRunExportNaoInfereRelacoesPorNomePorPadrao(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TABLE IF NOT EXISTS `users`",
-		"INSERT INTO `users` (`id`, `name`) VALUES (1, 'Alice');",
+		`CREATE TABLE IF NOT EXISTS "users"`,
+		`INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');`,
 	)
 
-	if strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `orders`") || strings.Contains(sqlDump, "FOREIGN KEY (`user_id`) REFERENCES `users` (`id`)") {
+	if strings.Contains(sqlDump, `CREATE TABLE IF NOT EXISTS "orders"`) || strings.Contains(sqlDump, `FOREIGN KEY ("user_id") REFERENCES "users" ("id")`) {
 		t.Fatalf("não deveria inferir relações por nome sem a flag: %s", sqlDump)
 	}
 }
@@ -280,14 +280,14 @@ func TestRunExportNewIDsComRelacoesPorNomeNoDestinoSQLite(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TEMP TABLE `__tracesql_map_users`",
-		"CREATE TEMP TABLE `__tracesql_map_orders`",
-		"CREATE TEMP TABLE `__tracesql_map_order_items`",
-		"INSERT INTO `users` (`name`) VALUES ('Alice');",
-		"INSERT INTO `__tracesql_map_users` (`old_id`, `new_id`) VALUES (1, last_insert_rowid());",
-		"INSERT INTO `orders` (`user_id`, `total`) VALUES ((SELECT `new_id` FROM `__tracesql_map_users` WHERE `old_id` = 1), 99);",
-		"INSERT INTO `__tracesql_map_orders` (`old_id`, `new_id`) VALUES (10, last_insert_rowid());",
-		"INSERT INTO `order_items` (`order_id`, `sku`) VALUES ((SELECT `new_id` FROM `__tracesql_map_orders` WHERE `old_id` = 10), 'A-1');",
+		`CREATE TEMP TABLE "__tracesql_map_users"`,
+		`CREATE TEMP TABLE "__tracesql_map_orders"`,
+		`CREATE TEMP TABLE "__tracesql_map_order_items"`,
+		`INSERT INTO "users" ("name") VALUES ('Alice');`,
+		`INSERT INTO "__tracesql_map_users" ("old_id", "new_id") VALUES (1, last_insert_rowid());`,
+		`INSERT INTO "orders" ("user_id", "total") VALUES ((SELECT "new_id" FROM "__tracesql_map_users" WHERE "old_id" = 1), 99);`,
+		`INSERT INTO "__tracesql_map_orders" ("old_id", "new_id") VALUES (10, last_insert_rowid());`,
+		`INSERT INTO "order_items" ("order_id", "sku") VALUES ((SELECT "new_id" FROM "__tracesql_map_orders" WHERE "old_id" = 10), 'A-1');`,
 	)
 }
 
@@ -319,14 +319,14 @@ func TestRunExportDepthZeroMantemApenasRegistroBase(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TABLE IF NOT EXISTS `orders`",
-		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
+		`CREATE TABLE IF NOT EXISTS "orders"`,
+		`INSERT INTO "orders" ("id", "user_id", "total") VALUES (10, 1, 99);`,
 	)
 
-	if strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `users`") || strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `order_items`") {
+	if strings.Contains(sqlDump, `CREATE TABLE IF NOT EXISTS "users"`) || strings.Contains(sqlDump, `CREATE TABLE IF NOT EXISTS "order_items"`) {
 		t.Fatalf("depth 0 nao deveria incluir tabelas relacionadas: %s", sqlDump)
 	}
-	if strings.Contains(sqlDump, "INSERT INTO `users`") || strings.Contains(sqlDump, "INSERT INTO `order_items`") {
+	if strings.Contains(sqlDump, `INSERT INTO "users"`) || strings.Contains(sqlDump, `INSERT INTO "order_items"`) {
 		t.Fatalf("depth 0 nao deveria incluir inserts relacionados: %s", sqlDump)
 	}
 }
@@ -361,15 +361,15 @@ func TestRunExportDepthUmIncluiSomentePrimeiroNivel(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TABLE IF NOT EXISTS `users`",
-		"CREATE TABLE IF NOT EXISTS `orders`",
-		"CREATE TABLE IF NOT EXISTS `order_items`",
-		"INSERT INTO `users` (`id`, `name`) VALUES (1, 'Alice');",
-		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
-		"INSERT INTO `order_items` (`id`, `order_id`, `sku`) VALUES (100, 10, 'A-1');",
+		`CREATE TABLE IF NOT EXISTS "users"`,
+		`CREATE TABLE IF NOT EXISTS "orders"`,
+		`CREATE TABLE IF NOT EXISTS "order_items"`,
+		`INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');`,
+		`INSERT INTO "orders" ("id", "user_id", "total") VALUES (10, 1, 99);`,
+		`INSERT INTO "order_items" ("id", "order_id", "sku") VALUES (100, 10, 'A-1');`,
 	)
 
-	if strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `item_events`") || strings.Contains(sqlDump, "INSERT INTO `item_events`") {
+	if strings.Contains(sqlDump, `CREATE TABLE IF NOT EXISTS "item_events"`) || strings.Contains(sqlDump, `INSERT INTO "item_events"`) {
 		t.Fatalf("depth 1 nao deveria incluir o segundo nivel de relacoes: %s", sqlDump)
 	}
 }
@@ -401,10 +401,10 @@ func TestRunExportIgnoraTabelasPorSufixo(t *testing.T) {
 	}
 
 	containsAll(t, sqlDump,
-		"CREATE TABLE IF NOT EXISTS `users`",
-		"CREATE TABLE IF NOT EXISTS `orders`",
-		"INSERT INTO `users` (`id`, `name`) VALUES (1, 'Alice');",
-		"INSERT INTO `orders` (`id`, `user_id`, `total`) VALUES (10, 1, 99);",
+		`CREATE TABLE IF NOT EXISTS "users"`,
+		`CREATE TABLE IF NOT EXISTS "orders"`,
+		`INSERT INTO "users" ("id", "name") VALUES (1, 'Alice');`,
+		`INSERT INTO "orders" ("id", "user_id", "total") VALUES (10, 1, 99);`,
 	)
 
 	if strings.Contains(sqlDump, "orders_log") || strings.Contains(sqlDump, "'created'") {

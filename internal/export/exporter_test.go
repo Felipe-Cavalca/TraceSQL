@@ -33,13 +33,13 @@ func TestRunExportPreserveIDs(t *testing.T) {
 		t.Fatalf("erro ao exportar: %v", err)
 	}
 
-	if !strings.Contains(sqlDump, "CREATE TABLE IF NOT EXISTS `users`") {
+	if !strings.Contains(sqlDump, `CREATE TABLE IF NOT EXISTS "users"`) {
 		t.Fatalf("schema da tabela users não encontrado: %s", sqlDump)
 	}
-	if !strings.Contains(sqlDump, "INSERT INTO `users` (`id`, `name`, `age`) VALUES (1, 'Alice', 30);") {
+	if !strings.Contains(sqlDump, `INSERT INTO "users" ("id", "name", "age") VALUES (1, 'Alice', 30);`) {
 		t.Fatalf("insert da tabela users não encontrado: %s", sqlDump)
 	}
-	if strings.Index(sqlDump, "CREATE TABLE IF NOT EXISTS `users`") > strings.Index(sqlDump, "INSERT INTO `users`") {
+	if strings.Index(sqlDump, `CREATE TABLE IF NOT EXISTS "users"`) > strings.Index(sqlDump, `INSERT INTO "users"`) {
 		t.Fatalf("schema deveria aparecer antes do insert: %s", sqlDump)
 	}
 }
@@ -65,10 +65,10 @@ func TestRunExportGenerateNewIDs(t *testing.T) {
 		t.Fatalf("erro ao exportar: %v", err)
 	}
 
-	if !strings.Contains(sqlDump, "INSERT INTO `orders` (`total`) VALUES (99);") {
+	if !strings.Contains(sqlDump, `INSERT INTO "orders" ("total") VALUES (99);`) {
 		t.Fatalf("insert deveria omitir a coluna id quando new_ids = true: %s", sqlDump)
 	}
-	if strings.Contains(sqlDump, "INSERT INTO `orders` (`id`,") {
+	if strings.Contains(sqlDump, `INSERT INTO "orders" ("id",`) {
 		t.Fatalf("id não deveria aparecer no insert quando new_ids = true: %s", sqlDump)
 	}
 }
