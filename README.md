@@ -122,6 +122,7 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Quando `--relations-by-name` está ativo, o TraceSQL também tenta relacionar tabelas por colunas no formato `[tabela]_id`, sem substituir foreign keys reais já existentes.
 - Quando `--depth` não é informado, o TraceSQL percorre o grafo inteiro a partir do registro inicial.
 - Quando `--ignore-table-suffix` é informado, tabelas com esse final são removidas da travessia e do schema gerado.
+- Cada valor vira um literal conforme a categoria do tipo da coluna (numérico, booleano, binário, JSON, data/hora ou texto) e o dialeto de saída. Tipo desconhecido sai como texto entre aspas. Os detalhes estão em [docs/EXPORTACAO.md](docs/EXPORTACAO.md).
 
 ## Segurança e dependências
 
@@ -139,3 +140,9 @@ Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.26, SQLite, clientes MySQL/Postgres e Docker socket para testes.
 - Testes automatizados: `go test ./...`.
+
+## Documentação
+- [docs/EXPORTACAO.md](docs/EXPORTACAO.md): como cada valor vira literal SQL, por tipo e por dialeto de saída.
+- [docs/SEGURANCA.md](docs/SEGURANCA.md): política de dependências, Dependabot e `govulncheck`.
+- [docs/SECURITY.md](docs/SECURITY.md): como reportar uma vulnerabilidade.
+- [ROADMAP.md](ROADMAP.md): fases do projeto e próximos passos.
