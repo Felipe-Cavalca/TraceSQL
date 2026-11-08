@@ -388,7 +388,7 @@ func buildInsert(cfg config.Config, row scannedRow, tableMeta metadata.Table, ta
 			return "", fmt.Errorf("não foi possível localizar o valor antigo da PK %s.%s", table, mapping.PK.Name)
 		}
 		pkType := row.types[row.index[strings.ToLower(mapping.PK.Name)]]
-		return buildInsertWithMapping(cfg.OutputDriver, table, insertCols, insertVals, mapping, formatValue(oldPKValue, pkType)), nil
+		return buildInsertWithMapping(cfg.OutputDriver, table, insertCols, insertVals, mapping, formatValue(cfg.OutputDriver, pkType.DatabaseTypeName(), oldPKValue)), nil
 	}
 
 	return fmt.Sprintf(
@@ -411,10 +411,10 @@ func buildValueExpression(outputDriver string, row scannedRow, columnIndex int, 
 			break
 		}
 
-		return buildMappedReferenceExpression(outputDriver, mapping, row.dests[columnIndex], row.types[columnIndex])
+		return buildMappedReferenceExpression(outputDriver, mapping, row.dests[columnIndex], row.types[columnIndex].DatabaseTypeName())
 	}
 
-	return formatValue(row.dests[columnIndex], row.types[columnIndex])
+	return formatValue(outputDriver, row.types[columnIndex].DatabaseTypeName(), row.dests[columnIndex])
 }
 
 func buildInsertWithMapping(outputDriver, table string, insertCols, insertVals []string, mapping newIDMapping, oldPKExpr string) string {
@@ -465,7 +465,7 @@ func buildInsertWithMapping(outputDriver, table string, insertCols, insertVals [
 	}
 }
 
-func buildMappedReferenceExpression(outputDriver string, mapping newIDMapping, oldValue sql.NullString, colType *sql.ColumnType) string {
+func buildMappedReferenceExpression(outputDriver string, mapping newIDMapping, oldValue sql.NullString, typeName string) string {
 	if !oldValue.Valid {
 		return "NULL"
 	}
@@ -475,7 +475,7 @@ func buildMappedReferenceExpression(outputDriver string, mapping newIDMapping, o
 		quoteIdent(outputDriver, "new_id"),
 		quoteIdent(outputDriver, mapping.MapTable),
 		quoteIdent(outputDriver, "old_id"),
-		formatValue(oldValue, colType),
+		formatValue(outputDriver, typeName, oldValue),
 	)
 }
 
@@ -967,25 +967,6 @@ func isIntegerType(columnType string) bool {
 
 func isIntegerColumn(column metadata.Column) bool {
 	return isIntegerType(mapColumnType("sqlite", column.Type))
-}
-
-func formatValue(v sql.NullString, colType *sql.ColumnType) string {
-	if !v.Valid {
-		return "NULL"
-	}
-
-	typeName := strings.ToLower(colType.DatabaseTypeName())
-	switch {
-	case strings.Contains(typeName, "int"), strings.Contains(typeName, "float"), strings.Contains(typeName, "double"), strings.Contains(typeName, "dec"), strings.Contains(typeName, "numeric"), strings.Contains(typeName, "real"):
-		return v.String
-	case strings.Contains(typeName, "bool"):
-		if v.String == "t" || strings.EqualFold(v.String, "true") || v.String == "1" {
-			return "TRUE"
-		}
-		return "FALSE"
-	default:
-		return "'" + escapeQuotes(v.String) + "'"
-	}
 }
 
 func escapeQuotes(s string) string {
