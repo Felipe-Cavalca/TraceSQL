@@ -135,7 +135,7 @@ Por que cada dialeto é assim:
 
 - **mysql:** com `NO_BACKSLASH_ESCAPES` desligado (o padrão), a barra é escape. O conjunto é o de `mysql_real_escape_string`, menos a aspa dupla, que dentro de aspas simples não precisa de escape. NUL e quebras de linha também são escapados para o arquivo não ter byte NUL cru nem valores quebrando linha.
 - **postgres:** com `standard_conforming_strings = on` (o padrão desde o PostgreSQL 9.1), a barra é um caractere comum dentro de `'...'`. Por isso **não se usa** a forma `E'...'`. NUL não existe em texto do postgres, então não há escape que o salve.
-- **sqlite:** a barra é sempre um caractere comum. NUL e quebras de linha ficam dentro de `'...'` como estão.
+- **sqlite:** a barra é sempre um caractere comum. NUL e quebras de linha ficam dentro de `'...'` como estão. (Restaurar um NUL com o driver `modernc.org/sqlite` falha; veja as limitações.)
 
 O escape tem de ser a inversa exata da leitura do banco de destino: ao restaurar o arquivo, o texto guardado é idêntico ao original (veja os testes de ida e volta abaixo).
 
@@ -180,6 +180,7 @@ Pontos que o código e a issue não definiam. Os padrões escolhidos são os mai
 - No postgres, o arquivo supõe `standard_conforming_strings = on` (o padrão). Com o ajuste desligado no destino, a barra invertida em texto seria lida como escape. O TraceSQL não escreve `SET standard_conforming_strings` no arquivo.
 - No mysql, o arquivo supõe `NO_BACKSLASH_ESCAPES` desligado (o padrão). Com ele ligado, `\\` seria lido como duas barras.
 - NUL em texto não pode ser restaurado no postgres (o banco recusa). O TraceSQL escreve o byte como veio e deixa o erro aparecer.
+- NUL em texto também não pode ser restaurado no sqlite com o driver `modernc.org/sqlite`: ele corta o SQL no byte NUL (`unrecognized token`), mesmo com o literal correto. O literal gerado continua com o NUL cru.
 - O escape supõe texto em UTF-8. Conjuntos de caracteres em que um byte de caractere multibyte pode valer `0x5C` (como GBK e SJIS) não são tratados.
 - Tipos espaciais do MySQL (`geometry`, `point`) chegam como bytes e saem como texto entre aspas. Eles não são restaurados corretamente.
 - Os nomes exatos dos tipos dependem do driver de origem. A lista do Passo 2 cobre os nomes que `pgx`, `go-sql-driver/mysql` e `modernc.org/sqlite` informam.
@@ -461,13 +462,13 @@ Dialetos (valor `a\b'c`, tipo `text`):
 | `dialeto_desconhecido` | `oracle` | `'a\b''c'` |
 | `dialeto_vazio` | (vazio) | `'a\b''c'` |
 
-Referência com `--new-ids`: `buildMappedReferenceExpression` usa o mesmo literal. Um valor antigo `a\b` de tipo `text` no dialeto mysql aparece como `'a\\b'` dentro do `WHERE old_id = ...`, e no postgres como `'a\b'`.
+Referência com `--new-ids`: `buildMappedReferenceExpression` obtém o valor de `formatValue`, o mesmo literal das colunas. Só tabelas com chave primária inteira de uma coluna entram no mapa, então o valor de `old_id` é um inteiro e nunca contém `\` nem `'`. Se um valor fora do formato de número aparecer, ele sai entre aspas e escapado como qualquer outro texto.
 
 **Ida e volta (round-trip)**
 
-Além da tabela, cada dialeto tem um teste que escreve um conjunto de valores, lê de volta e compara com o original. O conjunto mínimo (cada item é um valor de teste): `abc`, `C:\temp`, `a\\b`, `abc\`, `\`, `it's`, `C:\temp\'x`, `'; DROP TABLE x;--`, `\'; DROP TABLE x;--`, `a<NUL>b` (menos no postgres), `l1<LF>l2`, `l1<CR><LF>l2`, `a<TAB>b`, `a<SUB>b`, `say "hi"`, `ação 日本 😀`, `\n` (barra e `n`) e o texto vazio.
+Além da tabela, cada dialeto tem um teste que escreve um conjunto de valores, lê de volta e compara com o original. O conjunto mínimo (cada item é um valor de teste): `abc`, `C:\temp`, `a\\b`, `abc\`, `\`, `it's`, `C:\temp\'x`, `'; DROP TABLE x;--`, `\'; DROP TABLE x;--`, `a<NUL>b` (menos no postgres e na ida e volta do sqlite), `l1<LF>l2`, `l1<CR><LF>l2`, `a<TAB>b`, `a<SUB>b`, `say "hi"`, `ação 日本 😀`, `\n` (barra e `n`) e o texto vazio.
 
-- **sqlite:** abrir um SQLite em memória (o `modernc.org/sqlite` que o projeto já usa), executar `SELECT <literal>` com o literal que `formatValue("sqlite", "text", ...)` devolve e conferir que o valor lido é idêntico ao original. Vale também para `formatValue("sqlite", ...)` dentro de um `INSERT` seguido de `SELECT`. Como o banco aceita NUL dentro de `'...'`, o item com NUL entra.
+- **sqlite:** abrir um SQLite em memória (o `modernc.org/sqlite` que o projeto já usa), executar `SELECT <literal>` com o literal que `formatValue("sqlite", "text", ...)` devolve e conferir que o valor lido é idêntico ao original. Vale também para `formatValue("sqlite", ...)` dentro de um `INSERT` seguido de `SELECT`. O item com NUL **não entra** na ida e volta do sqlite: o driver `modernc.org/sqlite` corta o SQL no byte NUL (`unrecognized token`), mesmo com o literal correto. O teste desse item é pulado (`t.Skip`) com esse motivo. A saída do `formatValue` para NUL no sqlite continua a da tabela (byte inalterado).
 - **mysql e postgres:** não há banco nos testes unitários. Cada teste escreve um decodificador pequeno que aplica a regra de leitura do dialeto ao literal e compara com o original:
   - decodificador do mysql: tira as aspas externas; lê da esquerda para a direita; `''` vale `'`; `\\` vale `\`; `\0` vale NUL; `\n` vale LF; `\r` vale CR; `\Z` vale Ctrl-Z; `\'` vale `'`; os demais caracteres valem eles mesmos. Uma aspa simples sozinha no meio do conteúdo, ou uma barra no fim sem caractere seguinte, falha o teste.
   - decodificador do postgres: tira as aspas externas e troca `''` por `'`; a barra não tem significado. Uma aspa simples sozinha no meio do conteúdo falha o teste.
