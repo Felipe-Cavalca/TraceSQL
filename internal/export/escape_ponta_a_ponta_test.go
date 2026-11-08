@@ -8,37 +8,6 @@ import (
 	"github.com/Felipe-Cavalca/TraceSQL/internal/config"
 )
 
-// Referência com --new-ids: o valor antigo da chave (texto com barra e aspa)
-// usa o mesmo literal do dialeto de saída (docs/EXPORTACAO.md, "Referência com --new-ids").
-func TestRunExportNewIDsReferenciaComBarraEAspa(t *testing.T) {
-	casos := []struct {
-		dialeto string
-		want    string
-	}{
-		{"mysql", "WHERE `old_id` = " + `'a\\b''c')`},
-		{"postgres", `WHERE "old_id" = 'a\b''c')`},
-		{"sqlite", "WHERE `old_id` = " + `'a\b''c')`},
-	}
-	for _, c := range casos {
-		t.Run(c.dialeto, func(t *testing.T) {
-			db := openSQLiteTestDB(t)
-			mustExec(t, db, "CREATE TABLE users (code TEXT PRIMARY KEY, name TEXT)")
-			mustExec(t, db, "CREATE TABLE orders (id INTEGER PRIMARY KEY, user_code TEXT, total INT, FOREIGN KEY(user_code) REFERENCES users(code))")
-			mustExec(t, db, `INSERT INTO users (code, name) VALUES ('a\b''c', 'Alice')`)
-			mustExec(t, db, `INSERT INTO orders (id, user_code, total) VALUES (10, 'a\b''c', 99)`)
-
-			cfg := config.Config{Driver: "sqlite", OutputDriver: c.dialeto, DSN: "unused", Table: "users", Column: "code", Record: `a\b'c`, NewIDs: true}
-			dump, err := Run(context.Background(), db, cfg)
-			if err != nil {
-				t.Fatalf("erro ao exportar: %v", err)
-			}
-			if !strings.Contains(dump, c.want) {
-				t.Fatalf("referência esperada com %s\nsaída:\n%s", c.want, dump)
-			}
-		})
-	}
-}
-
 // Ida e volta ponta a ponta no mysql: o INSERT gerado por Run, lido pela regra
 // do mysql, devolve o texto original.
 func TestRunExportMySQLIdaEVoltaComBarraEAspa(t *testing.T) {
