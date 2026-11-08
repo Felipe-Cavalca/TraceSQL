@@ -297,6 +297,37 @@ func TestRunExportNomesComAspasDuplasParaMySQLMantemAspas(t *testing.T) {
 	containsAll(t, dump, "CREATE TABLE IF NOT EXISTS `t\"x`", "INSERT INTO `t\"x` (`id`, `c\"y`) VALUES (1, 'v');")
 }
 
+// Nome da tabela de mapa do --new-ids: aspas e crase do nome da tabela são
+// preservadas (e escapadas ao escrever), os demais caracteres especiais viram "_".
+// A doc não define esse formato (lacuna-doc).
+func TestRunExportNewIDsNomeDaTabelaDeMapa(t *testing.T) {
+	casos := []struct {
+		nome, tabela, ddl, mapa string
+	}{
+		{"aspas_duplas", `t"x`, `CREATE TABLE "t""x" (id INTEGER PRIMARY KEY, nome TEXT)`, `"__tracesql_map_t""x"`},
+		{"crase", "t`x", "CREATE TABLE \"t`x\" (id INTEGER PRIMARY KEY, nome TEXT)", "\"__tracesql_map_t`x\""},
+		{"espaco", "my table", `CREATE TABLE "my table" (id INTEGER PRIMARY KEY, nome TEXT)`, `"__tracesql_map_my_table"`},
+		{"ponto", "a.b", `CREATE TABLE "a.b" (id INTEGER PRIMARY KEY, nome TEXT)`, `"__tracesql_map_a_b"`},
+	}
+	for _, c := range casos {
+		t.Run(c.nome, func(t *testing.T) {
+			db := openSQLiteTestDB(t)
+			mustExec(t, db, c.ddl)
+			mustExec(t, db, "INSERT INTO "+quoteIdent("sqlite", c.tabela)+" (id, nome) VALUES (5, 'a')")
+
+			cfg := config.Config{Driver: "sqlite", OutputDriver: "sqlite", DSN: "unused", Table: c.tabela, Column: "id", Record: "5", NewIDs: true}
+			dump, err := Run(context.Background(), db, cfg)
+			if err != nil {
+				t.Fatalf("erro ao exportar com new_ids: %v", err)
+			}
+			containsAll(t, dump,
+				"CREATE TEMP TABLE "+c.mapa,
+				"INSERT INTO "+c.mapa+` ("old_id", "new_id") VALUES (5, last_insert_rowid());`,
+			)
+		})
+	}
+}
+
 // Tabelas de mapeamento do --new-ids também escapam o nome (doc, "Onde a regra vale").
 func TestRunExportNewIDsComAspasNoNomeDaTabela(t *testing.T) {
 	db := openSQLiteTestDB(t)
