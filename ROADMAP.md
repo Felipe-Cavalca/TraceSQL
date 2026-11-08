@@ -34,7 +34,7 @@ O TraceSQL começou como um utilitário de terminal multiplataforma para exporta
 
 ## Stack técnica
 - Linguagem: Go.
-- Drivers: `pgx` (PostgreSQL), `go-sql-driver/mysql` e `glebarez/sqlite`.
+- Drivers: `pgx` (PostgreSQL), `go-sql-driver/mysql` e `modernc.org/sqlite`.
 - CLI: `spf13/cobra`.
 - Configuração: `.env` com `godotenv` e complementação por flags.
 - Build: `go build -trimpath -ldflags="-s -w" ./cmd/tracesql`.

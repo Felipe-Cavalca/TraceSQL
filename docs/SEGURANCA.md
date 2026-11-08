@@ -168,6 +168,49 @@ Regras:
 - Não use `@main` nem tag sem SHA.
 - Por enquanto vale só para as actions do `ci.yml`. Os outros workflows continuam por tag.
 
+## Driver SQLite
+
+O TraceSQL lê bancos SQLite sem precisar de compilador C. Para isso usa um driver escrito só em Go: o `modernc.org/sqlite`.
+
+### Por que mudamos
+
+Antes, o projeto usava `github.com/glebarez/sqlite`. Esse pacote é um wrapper (uma camada fina) de uma pessoa só. Ele existe para ligar o GORM ao SQLite, mas o TraceSQL não usa o GORM.
+
+Problemas dessa escolha:
+
+- Arrastava o `gorm.io/gorm` e bibliotecas auxiliares (`jinzhu/inflection`, `jinzhu/now`) sem nenhum uso.
+- Dependia de `github.com/glebarez/go-sqlite`, outro fork mantido por uma pessoa só. Ele ficava atrás da versão original do `modernc.org/sqlite`.
+- A atualização de segurança ficava presa à manutenção desses intermediários.
+
+Agora o TraceSQL usa o `modernc.org/sqlite` direto. É o projeto original, mantido pelo GitLab `cznic`, com versões frequentes.
+
+### O que muda para quem usa
+
+Nada. O comportamento é o mesmo:
+
+- O nome do driver registrado continua `sqlite`. Os valores `--driver sqlite` e `--driver sqlite3` funcionam como antes.
+- O `--database` continua sendo o caminho do arquivo SQLite.
+- O SQL gerado não muda.
+- Continua sem CGO. Os binários da Release continuam estáticos.
+
+### O que muda no código
+
+- `internal/db/db.go` e `internal/export/exporter_test.go` trocam o import `_ "github.com/glebarez/sqlite"` por `_ "modernc.org/sqlite"`.
+- A chamada `sql.Open("sqlite", dsn)` não muda.
+
+### O que muda no go.mod
+
+- Sai: `github.com/glebarez/sqlite`, `github.com/glebarez/go-sqlite`, `gorm.io/gorm`, `github.com/jinzhu/inflection`, `github.com/jinzhu/now`.
+- Entra como dependência direta: `modernc.org/sqlite` na versão estável mais recente, `v1.62.0` (exige Go 1.26, a versão do projeto).
+- `go mod tidy` não deixa diferença.
+
+### Como conferir
+
+1. `go mod tidy` não altera o `go.mod` nem o `go.sum`.
+2. `go list -m all` não lista `gorm.io/gorm` nem `glebarez`.
+3. `go test ./...` passa.
+4. `govulncheck ./...` não encontra vulnerabilidade alcançável.
+
 ## Reportar uma vulnerabilidade
 
 NOTA: não abra uma issue pública para uma falha de segurança.

@@ -9,7 +9,7 @@ import (
 
 	"github.com/Felipe-Cavalca/TraceSQL/internal/config"
 	"github.com/Felipe-Cavalca/TraceSQL/internal/metadata"
-	_ "github.com/glebarez/sqlite"
+	_ "modernc.org/sqlite"
 )
 
 func TestRunExportPreserveIDs(t *testing.T) {
