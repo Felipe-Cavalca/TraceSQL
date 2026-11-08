@@ -9,7 +9,7 @@ Veja também: [README](../README.md) e [EXPORTACAO](EXPORTACAO.md).
 - O modo é uma **heurística**. Ele adivinha relações pelo nome da coluna. Ele não prova que a relação existe.
 - Ele só vale para bancos que **não declaram** a foreign key. Foreign keys reais sempre têm prioridade.
 - Ele pode **deixar relações de fora** (grafo incompleto) e pode **inventar uma relação errada** (grafo com linhas a mais).
-- Foreign keys compostas (várias colunas) **não são inferidas**. Veja a [issue #32](https://github.com/Felipe-Cavalca/TraceSQL/issues/32), fechada como "not planned".
+- Foreign keys compostas (várias colunas) **não são inferidas**. Veja a [issue #32](https://github.com/Felipe-Cavalca/TraceSQL/issues/32). O suporte a FK composta está em aberto nessa issue, para reavaliação.
 
 ## Como a regra funciona
 
