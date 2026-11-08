@@ -140,7 +140,7 @@ Pontos que o código e a issue não definiam. Os padrões escolhidos são os mai
 
 ## Limitações conhecidas
 
-- A barra invertida em texto no MySQL (issue #63) e o escape de nomes de tabela e coluna (issue #64) são tratados à parte.
+- A barra invertida em texto no MySQL (issue #63) e o escape de nomes de tabela e coluna (issue #64, em [IDENTIFICADORES.md](IDENTIFICADORES.md)) são tratados à parte.
 - Tipos espaciais do MySQL (`geometry`, `point`) chegam como bytes e saem como texto entre aspas. Eles não são restaurados corretamente.
 - Os nomes exatos dos tipos dependem do driver de origem. A lista do Passo 2 cobre os nomes que `pgx`, `go-sql-driver/mysql` e `modernc.org/sqlite` informam.
 
