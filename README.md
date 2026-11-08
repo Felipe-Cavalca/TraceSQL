@@ -89,7 +89,7 @@ go run ./cmd/tracesql
 | `--output-driver` | Não | Dialeto SQL de saída. Padrão: mesmo driver da origem. |
 | `--out` | Não | Caminho do arquivo `.sql` gerado. |
 | `--new-ids` | Não | Omite a chave primária inteira simples dos `INSERT`s para gerar novos IDs e preservar as referências no dump. |
-| `--relations-by-name` | Não | Infere relações pelo padrão `[tabela]_id` e adiciona essas referências ao grafo exportado. |
+| `--relations-by-name` | Não | Infere relações pelo padrão `[tabela]_id` e adiciona essas referências ao grafo exportado. É uma heurística e pode errar; veja [docs/RELACOES.md](docs/RELACOES.md). |
 | `--depth` | Não | Limita quantos níveis de relações serão percorridos. Omitido = ilimitado, `0` = só o registro base, `1` = primeiro nível de pais/filhos. |
 | `--ignore-table-suffix` | Não | Ignora tabelas cujo nome termina com o sufixo informado, como `_log`. A tabela inicial continua sendo exportada mesmo que combine com o sufixo. |
 | `--log` | Não | Escreve logs de execução no `stderr`. |
@@ -119,7 +119,7 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 - Nome padrão: `export_<tabela>_<registro>.sql`.
 - Conteúdo: `CREATE TABLE IF NOT EXISTS` seguido dos `INSERT`s das linhas exportadas.
 - Quando `--new-ids` está ativo, o TraceSQL cria mapeamentos temporários para preservar referências entre tabelas relacionadas.
-- Quando `--relations-by-name` está ativo, o TraceSQL também tenta relacionar tabelas por colunas no formato `[tabela]_id`, sem substituir foreign keys reais já existentes.
+- Quando `--relations-by-name` está ativo, o TraceSQL também tenta relacionar tabelas por colunas no formato `[tabela]_id`, sem substituir foreign keys reais já existentes. Regras, limites e o que fazer quando o grafo sai incompleto estão em [docs/RELACOES.md](docs/RELACOES.md).
 - Quando `--depth` não é informado, o TraceSQL percorre o grafo inteiro a partir do registro inicial.
 - Quando `--ignore-table-suffix` é informado, tabelas com esse final são removidas da travessia e do schema gerado.
 - Cada valor vira um literal conforme a categoria do tipo da coluna (numérico, booleano, binário, JSON, data/hora ou texto) e o dialeto de saída. Tipo desconhecido sai como texto entre aspas. Os detalhes estão em [docs/EXPORTACAO.md](docs/EXPORTACAO.md).
