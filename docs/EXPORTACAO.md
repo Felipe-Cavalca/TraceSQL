@@ -176,7 +176,7 @@ Pontos que o código e a issue não definiam. Os padrões escolhidos são os mai
 
 ## Limitações conhecidas
 
-- O escape de nomes de tabela e coluna (issue #64) é tratado à parte.
+- O escape de nomes de tabela e coluna (issue #64) é tratado à parte, em [IDENTIFICADORES.md](IDENTIFICADORES.md).
 - No postgres, o arquivo supõe `standard_conforming_strings = on` (o padrão). Com o ajuste desligado no destino, a barra invertida em texto seria lida como escape. O TraceSQL não escreve `SET standard_conforming_strings` no arquivo.
 - No mysql, o arquivo supõe `NO_BACKSLASH_ESCAPES` desligado (o padrão). Com ele ligado, `\\` seria lido como duas barras.
 - NUL em texto não pode ser restaurado no postgres (o banco recusa). O TraceSQL escreve o byte como veio e deixa o erro aparecer.
