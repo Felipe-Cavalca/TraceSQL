@@ -194,7 +194,7 @@ func escDecodificaMySQL(lit string) (string, error) {
 	return out.String(), nil
 }
 
-// escDecodificaPostgres tira as aspas externas e troca '' por '; a barra não tem significado.
+// escDecodificaPostgres tira as aspas externas e troca duas aspas simples seguidas por uma; a barra não tem significado.
 func escDecodificaPostgres(lit string) (string, error) {
 	if len(lit) < 2 || lit[0] != '\'' || lit[len(lit)-1] != '\'' {
 		return "", fmt.Errorf("literal sem aspas externas: %q", lit)
