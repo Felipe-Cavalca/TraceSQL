@@ -49,8 +49,8 @@ Uma linha de `orders` no postgres, exportada para mysql:
 Antes de classificar, o nome do tipo passa por estes passos, nesta ordem:
 
 1. Remover espaços no início e no fim, e passar para minúsculas.
-2. Remover qualquer trecho entre parênteses, com o parêntese. Exceção: `tinyint(1)` (regra de booleano abaixo).
-3. Remover as palavras `unsigned`, `signed` e `zerofill`, em qualquer posição.
+2. Se o nome inteiro, aparado e em minúsculas, é exatamente `tinyint(1)`, ele é mantido como está e o passo 3 não se aplica. Em qualquer outro nome, remover os trechos entre parênteses, com o parêntese.
+3. (Só para os demais nomes.) Remover as palavras `unsigned`, `signed` e `zerofill`, em qualquer posição.
 4. Remover o sufixo `with time zone` e o sufixo `without time zone`.
 5. Trocar sequências de espaços por um só espaço e remover espaços nas pontas.
 
@@ -65,6 +65,7 @@ Exemplos:
 | `Double  Precision` | `double precision` |
 | `timestamp(6) with time zone` | `timestamp` |
 | `TINYINT(1)` | `tinyint(1)` (mantido) |
+| `TINYINT(1) UNSIGNED` | `tinyint` (não é a exceção) |
 | `  Text ` | `text` |
 
 ### Passo 2: achar a categoria
@@ -83,6 +84,8 @@ Compara-se o nome normalizado **inteiro** com a lista da categoria. Não se acei
 Pontos de atenção:
 
 - Nome vazio é `text`.
+- `integer[3]` e `int[3]` também são arrays (terminam com `]`) e saem como `text`.
+- Data com `T` sem segundos, ou fora do formato `AAAA-MM-DDTHH:MM:SS[.frac][Z|±HH:MM]`, não é ajustada: sai inalterada entre aspas.
 - **Array** é `text`. Um nome que começa com `_` (como `_int4`, `_text`) ou termina com `[]` (como `integer[]`) é array.
 - `interval`, `point`, `uuid`, `inet`, `cidr`, `macaddr`, `xml`, `money`, `bit`, `varbit`, `enum`, `set`, `char`, `varchar`, `character`, `character varying`, `bpchar`, `name`, `citext`, `text`, `tinytext`, `mediumtext`, `longtext`, `clob` e `geometry` são `text`.
 - **Tipo desconhecido é `text`.** Exemplo: `my_custom_type` sai entre aspas, nunca como número.
@@ -114,7 +117,7 @@ Regra geral: se o valor lido é nulo (`Valid` falso), o literal é `NULL`, em qu
 
 **Data e hora (mysql e sqlite):** se o valor tem o formato `AAAA-MM-DDTHH:MM:SS` com frações opcionais, o `T` vira um espaço. Se o valor termina em `Z`, o `Z` é removido (o valor já está em UTC). Um deslocamento como `+02:00` é mantido. Valores sem `T` (como `2024-05-01`) não mudam. No postgres, nada muda.
 
-**Dialeto de saída:** o nome é normalizado como no resto do programa (`postgresql` e `pg` valem `postgres`; `sqlite3` vale `sqlite`). Um dialeto desconhecido usa as mesmas regras do `sqlite`.
+**Dialeto de saída:** o nome é normalizado como no resto do programa (`postgresql` e `pg` valem `postgres`; `sqlite3` vale `sqlite`). Um dialeto desconhecido ou vazio usa as mesmas regras do `sqlite`.
 
 ### Onde a regra vale
 
@@ -133,7 +136,7 @@ Pontos que o código e a issue não definiam. Os padrões escolhidos são os mai
 7. **`bit` e `varbit` são texto.** `interval`, `point` e tipos de geometria também.
 8. **Datas só são ajustadas para mysql e sqlite**, e só para o formato com `T` e `Z`. Não há conversão de fuso.
 9. **Binário usa hexadecimal minúsculo**, sem conversão de fuso nem de codificação.
-10. **`tinyint(1)` só é booleano quando o nome traz o `(1)`.**
+10. **`tinyint(1)` só é booleano quando o nome inteiro, aparado e em minúsculas, é exatamente `tinyint(1)`.** Com qualquer outra palavra junto, como `tinyint(1) unsigned`, o tipo é numérico.
 
 ## Limitações conhecidas
 
@@ -175,6 +178,10 @@ Cada linha das tabelas abaixo é um caso. Use a tabela como `[]struct{name, ...}
 | `boolean` | `boolean` | bool |
 | `tinyint_1_bool` | `tinyint(1)` | bool |
 | `tinyint_1_maiusculo` | `TINYINT(1)` | bool |
+| `tinyint_1_unsigned_maiusculo` | `TINYINT(1) UNSIGNED` | numeric |
+| `tinyint_1_unsigned_minusculo` | `tinyint(1) unsigned` | numeric |
+| `array_com_tamanho_integer` | `integer[3]` | text |
+| `array_com_tamanho_int` | `int[3]` | text |
 | `tinyint_4_numerico` | `tinyint(4)` | numeric |
 | `bytea` | `BYTEA` | binary |
 | `blob` | `BLOB` | binary |
@@ -260,6 +267,8 @@ A coluna "Saída" é o retorno exato, sem espaços extras.
 | `bool_false_mysql` | mysql | `boolean` | `false` | `FALSE` |
 | `bool_1_mysql` | mysql | `tinyint(1)` | `1` | `TRUE` |
 | `bool_0_mysql` | mysql | `tinyint(1)` | `0` | `FALSE` |
+| `tinyint_1_unsigned_um` | mysql | `tinyint(1) unsigned` | `1` | `1` |
+| `tinyint_1_unsigned_zero` | mysql | `TINYINT(1) UNSIGNED` | `0` | `0` |
 | `bool_true_sqlite` | sqlite | `boolean` | `true` | `1` |
 | `bool_false_sqlite` | sqlite | `boolean` | `false` | `0` |
 | `bool_1_sqlite` | sqlite | `BOOL` | `1` | `1` |
@@ -319,6 +328,8 @@ O valor é uma `string` Go com os bytes brutos. `Hi` são os bytes `0x48 0x69`.
 | `data_mysql` | mysql | `DATE` | `2024-05-01` | `'2024-05-01'` |
 | `datetime_com_espaco_mysql` | mysql | `DATETIME` | `2024-05-01 10:00:00` | `'2024-05-01 10:00:00'` |
 | `hora_sqlite` | sqlite | `time` | `10:00:00` | `'10:00:00'` |
+| `data_t_sem_segundos_mysql` | mysql | `datetime` | `2024-05-01T10:00` | `'2024-05-01T10:00'` |
+| `data_fora_do_formato_sqlite` | sqlite | `timestamp` | `2024-05-01T10:00:00 Z` | `'2024-05-01T10:00:00 Z'` |
 
 **Texto e aspas**
 
@@ -341,6 +352,7 @@ O valor é uma `string` Go com os bytes brutos. `Hi` são os bytes `0x48 0x69`.
 | `dialeto_sqlite3` | `sqlite3` | `bool` | `true` | `1` |
 | `dialeto_maiusculo` | `MySQL` | `blob` | `Hi` | `X'4869'` |
 | `dialeto_desconhecido_usa_sqlite` | `oracle` | `bool` | `true` | `1` |
+| `dialeto_vazio_usa_sqlite` | (vazio) | `bool` | `true` | `1` |
 
 ### Teste de integração (opcional)
 
