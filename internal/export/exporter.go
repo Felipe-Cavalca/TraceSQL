@@ -13,6 +13,7 @@ import (
 
 	"github.com/Felipe-Cavalca/TraceSQL/internal/config"
 	"github.com/Felipe-Cavalca/TraceSQL/internal/metadata"
+	"github.com/Felipe-Cavalca/TraceSQL/internal/progress"
 )
 
 var (
@@ -33,7 +34,9 @@ type traceLogger func(string, ...interface{})
 func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 	cfg.Normalize()
 	cfg.EnsureDefaults()
-	logf := newTraceLogger(cfg.Log)
+	logf := newTraceLogger(cfg.LogEnabled())
+	reporter := progress.FromContext(ctx)
+	reporter.SetPhase(progress.PhaseMetadata)
 	logf(
 		"iniciando export: source=%s target=%s table=%s column=%s record=%s new_ids=%t relations_by_name=%t depth=%s ignore_table_suffix=%q",
 		cfg.Driver,
@@ -76,6 +79,7 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 		baseRows[i].table = cfg.Table
 	}
 
+	reporter.SetPhase(progress.PhaseCollect)
 	rowsByTable, err := collectRows(ctx, db, cfg, catalog, baseRows, logf)
 	if err != nil {
 		return "", err
@@ -85,6 +89,7 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 	}
 	logf("grafo coletado: %s", summarizeRowsByTable(rowsByTable))
 
+	reporter.SetPhase(progress.PhaseGenerate)
 	tableOrder := orderedTables(catalog, rowsByTable)
 	exportedTables := make(map[string]struct{}, len(tableOrder))
 	for _, tableName := range tableOrder {
@@ -188,6 +193,7 @@ func collectRows(ctx context.Context, db *sql.DB, cfg config.Config, catalog met
 		}
 		seen[identity] = struct{}{}
 		rowsByTable[row.table] = append(rowsByTable[row.table], row)
+		progress.FromContext(ctx).AddRow(row.table)
 
 		if limitedDepth && item.depth >= maxDepth {
 			continue
