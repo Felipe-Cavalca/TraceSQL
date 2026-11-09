@@ -38,24 +38,12 @@ func catalogoT(fks []ForeignKey, tabelas ...Table) Catalog {
 }
 
 func fkT(tabela, coluna, destino, colDestino string) ForeignKey {
-	return ForeignKey{Table: tabela, Column: coluna, RefTable: destino, RefColumn: colDestino}
+	return ForeignKey{Table: tabela, Columns: []string{coluna}, RefTable: destino, RefColumns: []string{colDestino}}
 }
 
 func ordenaFKs(fks []ForeignKey) []ForeignKey {
 	out := append([]ForeignKey(nil), fks...)
-	sort.Slice(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.Table != b.Table {
-			return a.Table < b.Table
-		}
-		if a.Column != b.Column {
-			return a.Column < b.Column
-		}
-		if a.RefTable != b.RefTable {
-			return a.RefTable < b.RefTable
-		}
-		return a.RefColumn < b.RefColumn
-	})
+	sort.Slice(out, func(i, j int) bool { return lessForeignKey(out[i], out[j]) })
 	return out
 }
 
@@ -174,8 +162,7 @@ func TestInferenciaPorNomeCatalogoVazio(t *testing.T) { // caso 27
 func TestInferenciaPorNomeComForeignKeysExistentes(t *testing.T) {
 	realUsers := fkT("orders", "user_id", "users", "id")
 	realCustomers := fkT("orders", "user_id", "customers", "id")
-	compA := fkT("child", "a_id", "parent", "a")
-	compB := fkT("child", "b_id", "parent", "b")
+	comp := ForeignKey{Name: "fk_child_parent", Table: "child", Columns: []string{"a_id", "b_id"}, RefTable: "parent", RefColumns: []string{"a", "b"}}
 
 	rodaCasos(t, []casoInferencia{
 		{nome: "28 FK real tem prioridade",
@@ -186,9 +173,9 @@ func TestInferenciaPorNomeComForeignKeysExistentes(t *testing.T) {
 			catalogo:   catalogoT([]ForeignKey{realUsers}, tabelaT("users", "id*"), tabelaT("orders", "id*", "user_id")),
 			declaradas: []ForeignKey{realUsers}},
 		{nome: "30 FK composta declarada",
-			catalogo: catalogoT([]ForeignKey{compA, compB},
+			catalogo: catalogoT([]ForeignKey{comp},
 				tabelaT("parent", "a*", "b*"), tabelaT("child", "id*", "a_id", "b_id")),
-			declaradas: []ForeignKey{compA, compB}},
+			declaradas: []ForeignKey{comp}},
 	})
 }
 

@@ -47,7 +47,7 @@ func Run(ctx context.Context, db *sql.DB, cfg config.Config) (string, error) {
 		cfg.IgnoreTableSuffix,
 	)
 
-	baseRows, err := queryRowsByValue(ctx, db, cfg.Driver, cfg.Table, cfg.Column, cfg.Record, logf)
+	baseRows, err := queryRowsByValues(ctx, db, cfg.Driver, cfg.Table, []string{cfg.Column}, []string{cfg.Record}, logf)
 	if err != nil {
 		return "", fmt.Errorf("consulta de origem: %w", err)
 	}
@@ -224,26 +224,26 @@ func relatedRowsForRow(ctx context.Context, db *sql.DB, sourceDriver string, cat
 	for _, fk := range catalog.ForeignKeys {
 		switch {
 		case strings.EqualFold(fk.Table, row.table):
-			value, ok := valueForColumn(row, fk.Column)
-			if !ok || !value.Valid {
+			values, ok := valuesForColumns(row, fk.Columns)
+			if !ok {
 				continue
 			}
 
-			parentRows, err := queryRowsByValue(ctx, db, sourceDriver, fk.RefTable, fk.RefColumn, value.String, logf)
+			parentRows, err := queryRowsByValues(ctx, db, sourceDriver, fk.RefTable, fk.RefColumns, values, logf)
 			if err != nil {
-				return nil, fmt.Errorf("consultando pai %s.%s -> %s.%s: %w", fk.Table, fk.Column, fk.RefTable, fk.RefColumn, err)
+				return nil, fmt.Errorf("consultando pai %s.%s -> %s.%s: %w", fk.Table, strings.Join(fk.Columns, ","), fk.RefTable, strings.Join(fk.RefColumns, ","), err)
 			}
 			related = append(related, parentRows...)
 
 		case strings.EqualFold(fk.RefTable, row.table):
-			value, ok := valueForColumn(row, fk.RefColumn)
-			if !ok || !value.Valid {
+			values, ok := valuesForColumns(row, fk.RefColumns)
+			if !ok {
 				continue
 			}
 
-			childRows, err := queryRowsByValue(ctx, db, sourceDriver, fk.Table, fk.Column, value.String, logf)
+			childRows, err := queryRowsByValues(ctx, db, sourceDriver, fk.Table, fk.Columns, values, logf)
 			if err != nil {
-				return nil, fmt.Errorf("consultando filho %s.%s -> %s.%s: %w", fk.Table, fk.Column, fk.RefTable, fk.RefColumn, err)
+				return nil, fmt.Errorf("consultando filho %s.%s -> %s.%s: %w", fk.Table, strings.Join(fk.Columns, ","), fk.RefTable, strings.Join(fk.RefColumns, ","), err)
 			}
 			related = append(related, childRows...)
 		}
@@ -252,16 +252,43 @@ func relatedRowsForRow(ctx context.Context, db *sql.DB, sourceDriver string, cat
 	return related, nil
 }
 
-func queryRowsByValue(ctx context.Context, db *sql.DB, driver, table, column, value string, logf traceLogger) ([]scannedRow, error) {
-	logf("consultando %s onde %s = %s", table, column, value)
+// valuesForColumns devolve os valores de todas as colunas da chave. Se alguma
+// coluna não existir ou for NULL, a chave não se aplica (semântica MATCH SIMPLE).
+func valuesForColumns(row scannedRow, columns []string) ([]string, bool) {
+	if len(columns) == 0 {
+		return nil, false
+	}
+	values := make([]string, 0, len(columns))
+	for _, column := range columns {
+		value, ok := valueForColumn(row, column)
+		if !ok || !value.Valid {
+			return nil, false
+		}
+		values = append(values, value.String)
+	}
+	return values, true
+}
+
+// queryRowsByValues busca linhas onde todas as colunas casam com os valores
+// (col1 = ? AND col2 = ? ...). Uma chave composta usa somente as colunas da
+// mesma constraint.
+func queryRowsByValues(ctx context.Context, db *sql.DB, driver, table string, columns, values []string, logf traceLogger) ([]scannedRow, error) {
+	conditions := make([]string, len(columns))
+	args := make([]interface{}, len(columns))
+	descriptions := make([]string, len(columns))
+	for i, column := range columns {
+		conditions[i] = fmt.Sprintf("%s = %s", quoteIdent(driver, column), placeholderFor(driver, i+1))
+		args[i] = values[i]
+		descriptions[i] = fmt.Sprintf("%s = %s", column, values[i])
+	}
+	logf("consultando %s onde %s", table, strings.Join(descriptions, " e "))
 	query := fmt.Sprintf(
-		"SELECT * FROM %s WHERE %s = %s",
+		"SELECT * FROM %s WHERE %s",
 		quoteIdent(driver, table),
-		quoteIdent(driver, column),
-		placeholderFor(driver),
+		strings.Join(conditions, " AND "),
 	)
 
-	rows, err := scanQuery(ctx, db, query, value)
+	rows, err := scanQuery(ctx, db, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -350,9 +377,9 @@ func buildCreateTable(outputDriver string, table metadata.Table, foreignKeys []m
 	for _, fk := range foreignKeys {
 		definitions = append(definitions, fmt.Sprintf(
 			"FOREIGN KEY (%s) REFERENCES %s (%s)",
-			quoteIdent(outputDriver, fk.Column),
+			joinQuoted(outputDriver, fk.Columns),
 			quoteIdent(outputDriver, fk.RefTable),
-			quoteIdent(outputDriver, fk.RefColumn),
+			joinQuoted(outputDriver, fk.RefColumns),
 		))
 	}
 
@@ -402,12 +429,13 @@ func buildInsert(cfg config.Config, row scannedRow, tableMeta metadata.Table, ta
 func buildValueExpression(outputDriver string, row scannedRow, columnIndex int, tableForeignKeys []metadata.ForeignKey, mappings map[string]newIDMapping) string {
 	columnName := row.cols[columnIndex]
 	for _, fk := range tableForeignKeys {
-		if !strings.EqualFold(fk.Column, columnName) {
+		// FK composta não participa do remapeamento de ids.
+		if fk.IsComposite() || len(fk.Columns) == 0 || !strings.EqualFold(fk.Columns[0], columnName) {
 			continue
 		}
 
 		mapping, ok := mappings[strings.ToLower(fk.RefTable)]
-		if !ok || !strings.EqualFold(fk.RefColumn, mapping.PK.Name) {
+		if !ok || !strings.EqualFold(fk.RefColumns[0], mapping.PK.Name) {
 			break
 		}
 
@@ -616,7 +644,7 @@ func orderRowsForInsert(catalog metadata.Catalog, tableName string, rows []scann
 
 	var selfReferences []metadata.ForeignKey
 	for _, fk := range tableForeignKeys {
-		if strings.EqualFold(fk.RefTable, tableName) && strings.EqualFold(fk.RefColumn, mapping.PK.Name) {
+		if !fk.IsComposite() && len(fk.Columns) == 1 && strings.EqualFold(fk.RefTable, tableName) && strings.EqualFold(fk.RefColumns[0], mapping.PK.Name) {
 			selfReferences = append(selfReferences, fk)
 		}
 	}
@@ -641,7 +669,7 @@ func orderRowsForInsert(catalog metadata.Catalog, tableName string, rows []scann
 		for _, row := range pending {
 			ready := true
 			for _, fk := range selfReferences {
-				value, ok := valueForColumn(row, fk.Column)
+				value, ok := valueForColumn(row, fk.Columns[0])
 				if !ok || !value.Valid {
 					continue
 				}
@@ -792,9 +820,9 @@ func nullableValueString(value sql.NullString) string {
 	return value.String
 }
 
-func placeholderFor(driver string) string {
+func placeholderFor(driver string, position int) string {
 	if normalizeDialect(driver) == "postgres" {
-		return "$1"
+		return fmt.Sprintf("$%d", position)
 	}
 	return "?"
 }

@@ -9,7 +9,7 @@ Veja também: [README](../README.md) e [EXPORTACAO](EXPORTACAO.md).
 - O modo é uma **heurística**. Ele adivinha relações pelo nome da coluna. Ele não prova que a relação existe.
 - Ele só vale para bancos que **não declaram** a foreign key. Foreign keys reais sempre têm prioridade.
 - Ele pode **deixar relações de fora** (grafo incompleto) e pode **inventar uma relação errada** (grafo com linhas a mais).
-- Foreign keys compostas (várias colunas) **não são inferidas**. Veja a [issue #32](https://github.com/Felipe-Cavalca/TraceSQL/issues/32). O suporte a FK composta está em aberto nessa issue, para reavaliação.
+- Foreign keys reais compostas (várias colunas) são suportadas: o TraceSQL as lê do banco, segue a relação usando todas as colunas da chave e as recria na saída. Já a inferência por nome continua só de uma coluna: ela nunca monta uma relação composta. Veja a [issue #32](https://github.com/Felipe-Cavalca/TraceSQL/issues/32).
 
 ## Como a regra funciona
 
@@ -74,7 +74,7 @@ Em todos os exemplos, a tabela de destino tem `id` como chave primária e a colu
 | Disputa entre tabelas (plural) | `x.baby_id`, tabelas `babys` e `babies` | Ignorada (ambígua) | As duas viram `baby` e nenhuma é exata |
 | Nome exato e plural juntos | `x.user_id`, tabelas `user` e `users` | Aponta para `user` | O nome exato vence |
 | Coluna já tem FK real | `orders.user_id -> customers.id` declarada | Mantém a real, não infere `users` | FK real tem prioridade |
-| FK composta | `(a_id, b_id)` apontando para `t(a, b)` | **Não é inferida** | A heurística olha uma coluna por vez |
+| FK composta | `(a_id, b_id)` apontando para `t(a, b)` | **Não é inferida** (só vale se o banco declarar) | A heurística olha uma coluna por vez |
 | Falso positivo | `audit.user_id` guarda o id de outro sistema, e existe a tabela `users` | Relação criada, **errada** | O nome basta, não há checagem de dados nem de tipo |
 | Falso positivo (auto-relação não pretendida) | `employees.employee_id` com outro significado (por exemplo, matrícula) | Relação criada, **errada**: `employees.employee_id -> employees.id` | Coluna `[própria tabela]_id` aponta para a própria tabela |
 | Coluna só `_id` | coluna chamada `_id` | Ignorada | Nome base vazio |
@@ -89,7 +89,7 @@ Quando o banco declara uma FK composta, cada coluna dela já conta como "com rel
 2. **Não dá para mexer no banco.** Renomeie a tabela ou a coluna no banco usado na exportação para seguir o padrão (`[tabela]_id` com tabela no plural simples ou no nome exato).
 3. **Grafo com linhas demais (falso positivo).** Use `--ignore-table-suffix` para tirar tabelas do grafo, e `--depth` para limitar quantos níveis são percorridos. Se o problema for a própria inferência, rode sem `--relations-by-name` e use só as foreign keys reais.
 4. **Sempre confira o resultado.** Rode com `--log` e veja quantas relações foram inferidas. Abra o `.sql` e procure as linhas `FOREIGN KEY` que você não esperava.
-5. **Chaves compostas.** O TraceSQL não infere. Declare a FK composta no banco.
+5. **Chaves compostas.** O TraceSQL não infere. Declare a FK composta no banco; as declaradas são suportadas.
 
 ## Casos de teste (para quem escreve os testes)
 
@@ -144,7 +144,7 @@ Todos os casos devem rodar também no nível do exportador (`internal/export`, c
 | --- | --- | --- | --- |
 | 28 | FK real tem prioridade | `users(id*)`, `customers(id*)`, `orders(id*, user_id)`, FK `orders.user_id -> customers.id` | 0 adicionadas. Continua só `orders.user_id -> customers.id` |
 | 29 | FK real igual à inferida | `users(id*)`, `orders(id*, user_id)`, FK `orders.user_id -> users.id` | 0 adicionadas. Sem duplicata |
-| 30 | FK composta declarada | `parent(a*, b*)`, `child(id*, a_id, b_id)`, FKs `child.a_id -> parent.a` e `child.b_id -> parent.b` | 0 adicionadas |
+| 30 | FK composta declarada | `parent(a*, b*)`, `child(id*, a_id, b_id)`, FK composta `child(a_id, b_id) -> parent(a, b)` | 0 adicionadas |
 | 31 | rodar duas vezes | qualquer esquema do caso 1 | a segunda chamada devolve 0 adicionadas e a mesma lista |
 | 32 | ordem do resultado | caso 8 | lista ordenada por tabela, coluna, destino e coluna de destino |
 

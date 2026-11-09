@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -26,11 +27,37 @@ type Column struct {
 	AutoIncrement bool
 }
 
+// ForeignKey representa uma constraint de chave estrangeira. Columns e
+// RefColumns têm o mesmo tamanho e estão ordenadas por posição: Columns[i]
+// referencia RefColumns[i]. Uma FK simples tem uma única coluna. Name é o nome
+// da constraint quando o banco informa (vazio no SQLite e nas FKs inferidas).
 type ForeignKey struct {
-	Table     string
-	Column    string
-	RefTable  string
-	RefColumn string
+	Name       string
+	Table      string
+	Columns    []string
+	RefTable   string
+	RefColumns []string
+}
+
+// IsComposite informa se a FK usa mais de uma coluna.
+func (fk ForeignKey) IsComposite() bool {
+	return len(fk.Columns) > 1
+}
+
+func lessForeignKey(left, right ForeignKey) bool {
+	if left.Table != right.Table {
+		return left.Table < right.Table
+	}
+	if l, r := strings.Join(left.Columns, "\x00"), strings.Join(right.Columns, "\x00"); l != r {
+		return l < r
+	}
+	if left.RefTable != right.RefTable {
+		return left.RefTable < right.RefTable
+	}
+	if l, r := strings.Join(left.RefColumns, "\x00"), strings.Join(right.RefColumns, "\x00"); l != r {
+		return l < r
+	}
+	return left.Name < right.Name
 }
 
 func Discover(ctx context.Context, db *sql.DB, driver string) (Catalog, error) {
@@ -66,19 +93,8 @@ func Discover(ctx context.Context, db *sql.DB, driver string) (Catalog, error) {
 		catalog.ForeignKeys = append(catalog.ForeignKeys, foreignKeys...)
 	}
 
-	sort.Slice(catalog.ForeignKeys, func(i, j int) bool {
-		left := catalog.ForeignKeys[i]
-		right := catalog.ForeignKeys[j]
-		if left.Table != right.Table {
-			return left.Table < right.Table
-		}
-		if left.Column != right.Column {
-			return left.Column < right.Column
-		}
-		if left.RefTable != right.RefTable {
-			return left.RefTable < right.RefTable
-		}
-		return left.RefColumn < right.RefColumn
+	sort.SliceStable(catalog.ForeignKeys, func(i, j int) bool {
+		return lessForeignKey(catalog.ForeignKeys[i], catalog.ForeignKeys[j])
 	})
 
 	return catalog, nil
@@ -147,7 +163,9 @@ func (c Catalog) WithNameInferredForeignKeys() (Catalog, int) {
 	columnsWithRelations := map[string]struct{}{}
 	for _, fk := range foreignKeys {
 		existing[foreignKeyKey(fk)] = struct{}{}
-		columnsWithRelations[strings.ToLower(fk.Table)+"."+strings.ToLower(fk.Column)] = struct{}{}
+		for _, column := range fk.Columns {
+			columnsWithRelations[strings.ToLower(fk.Table)+"."+strings.ToLower(column)] = struct{}{}
+		}
 	}
 
 	added := 0
@@ -178,10 +196,10 @@ func (c Catalog) WithNameInferredForeignKeys() (Catalog, int) {
 			}
 
 			fk := ForeignKey{
-				Table:     table.Name,
-				Column:    column.Name,
-				RefTable:  refTable.Name,
-				RefColumn: "id",
+				Table:      table.Name,
+				Columns:    []string{column.Name},
+				RefTable:   refTable.Name,
+				RefColumns: []string{"id"},
 			}
 			key := foreignKeyKey(fk)
 			if _, exists := existing[key]; exists {
@@ -199,19 +217,8 @@ func (c Catalog) WithNameInferredForeignKeys() (Catalog, int) {
 		return c, 0
 	}
 
-	sort.Slice(foreignKeys, func(i, j int) bool {
-		left := foreignKeys[i]
-		right := foreignKeys[j]
-		if left.Table != right.Table {
-			return left.Table < right.Table
-		}
-		if left.Column != right.Column {
-			return left.Column < right.Column
-		}
-		if left.RefTable != right.RefTable {
-			return left.RefTable < right.RefTable
-		}
-		return left.RefColumn < right.RefColumn
+	sort.SliceStable(foreignKeys, func(i, j int) bool {
+		return lessForeignKey(foreignKeys[i], foreignKeys[j])
 	})
 
 	return Catalog{
@@ -272,7 +279,56 @@ func appendUnique(values []string, value string) []string {
 }
 
 func foreignKeyKey(fk ForeignKey) string {
-	return strings.ToLower(fk.Table) + "|" + strings.ToLower(fk.Column) + "|" + strings.ToLower(fk.RefTable) + "|" + strings.ToLower(fk.RefColumn)
+	return strings.ToLower(fk.Table) + "|" + strings.ToLower(strings.Join(fk.Columns, ",")) + "|" + strings.ToLower(fk.RefTable) + "|" + strings.ToLower(strings.Join(fk.RefColumns, ","))
+}
+
+// foreignKeyRow é uma linha de coluna de FK vinda do banco, já na ordem
+// posicional dentro de cada constraint.
+type foreignKeyRow struct {
+	key       string
+	name      string
+	table     string
+	column    string
+	refTable  string
+	refColumn string
+}
+
+// groupForeignKeyRows agrupa as linhas por key (identidade da constraint),
+// preservando a ordem de chegada. Colunas de constraints diferentes nunca se
+// misturam, mesmo quando compartilham colunas.
+func groupForeignKeyRows(rows []foreignKeyRow) []ForeignKey {
+	var foreignKeys []ForeignKey
+	index := map[string]int{}
+	for _, row := range rows {
+		i, ok := index[row.key]
+		if !ok {
+			i = len(foreignKeys)
+			index[row.key] = i
+			foreignKeys = append(foreignKeys, ForeignKey{Name: row.name, Table: row.table, RefTable: row.refTable})
+		}
+		foreignKeys[i].Columns = append(foreignKeys[i].Columns, row.column)
+		foreignKeys[i].RefColumns = append(foreignKeys[i].RefColumns, row.refColumn)
+	}
+	return foreignKeys
+}
+
+// scanForeignKeyRows lê linhas (constraint_name, tabela, coluna, tabela
+// referenciada, coluna referenciada), já ordenadas por constraint e posição,
+// e as agrupa por constraint.
+func scanForeignKeyRows(rows *sql.Rows) ([]ForeignKey, error) {
+	var collected []foreignKeyRow
+	for rows.Next() {
+		var row foreignKeyRow
+		if err := rows.Scan(&row.name, &row.table, &row.column, &row.refTable, &row.refColumn); err != nil {
+			return nil, err
+		}
+		row.key = row.name
+		collected = append(collected, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return groupForeignKeyRows(collected), nil
 }
 
 type inspector interface {
@@ -361,7 +417,12 @@ func (sqliteInspector) loadForeignKeys(ctx context.Context, db *sql.DB, table st
 	}
 	defer rows.Close()
 
-	var foreignKeys []ForeignKey
+	type sqliteFKRow struct {
+		id  int
+		seq int
+		row foreignKeyRow
+	}
+	var collected []sqliteFKRow
 	for rows.Next() {
 		var (
 			id       int
@@ -377,15 +438,30 @@ func (sqliteInspector) loadForeignKeys(ctx context.Context, db *sql.DB, table st
 			return nil, err
 		}
 
-		foreignKeys = append(foreignKeys, ForeignKey{
-			Table:     table,
-			Column:    fromCol,
-			RefTable:  refTable,
-			RefColumn: toCol,
-		})
+		collected = append(collected, sqliteFKRow{id: id, seq: seq, row: foreignKeyRow{
+			key:       strconv.Itoa(id),
+			table:     table,
+			column:    fromCol,
+			refTable:  refTable,
+			refColumn: toCol,
+		}})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
-	return foreignKeys, rows.Err()
+	// O pragma lista por id e seq, mas a ordem posicional é garantida aqui.
+	sort.SliceStable(collected, func(i, j int) bool {
+		if collected[i].id != collected[j].id {
+			return collected[i].id < collected[j].id
+		}
+		return collected[i].seq < collected[j].seq
+	})
+	ordered := make([]foreignKeyRow, 0, len(collected))
+	for _, item := range collected {
+		ordered = append(ordered, item.row)
+	}
+	return groupForeignKeyRows(ordered), nil
 }
 
 type postgresInspector struct{}
@@ -462,36 +538,28 @@ ORDER BY a.attnum`, table)
 func (postgresInspector) loadForeignKeys(ctx context.Context, db *sql.DB, table string) ([]ForeignKey, error) {
 	rows, err := db.QueryContext(ctx, `
 SELECT
-  tc.table_name,
-  kcu.column_name,
-  ccu.table_name AS referenced_table_name,
-  ccu.column_name AS referenced_column_name
-FROM information_schema.table_constraints tc
-JOIN information_schema.key_column_usage kcu
-  ON tc.constraint_name = kcu.constraint_name
- AND tc.table_schema = kcu.table_schema
-JOIN information_schema.constraint_column_usage ccu
-  ON ccu.constraint_name = tc.constraint_name
- AND ccu.table_schema = tc.table_schema
-WHERE tc.constraint_type = 'FOREIGN KEY'
-  AND tc.table_schema = current_schema()
-  AND tc.table_name = $1
-ORDER BY kcu.ordinal_position`, table)
+  con.conname,
+  cl.relname,
+  a.attname,
+  rcl.relname AS referenced_table_name,
+  ra.attname AS referenced_column_name
+FROM pg_catalog.pg_constraint con
+JOIN pg_catalog.pg_class cl ON cl.oid = con.conrelid
+JOIN pg_catalog.pg_namespace n ON n.oid = cl.relnamespace
+JOIN pg_catalog.pg_class rcl ON rcl.oid = con.confrelid
+CROSS JOIN LATERAL unnest(con.conkey, con.confkey) WITH ORDINALITY AS k(attnum, refattnum, ord)
+JOIN pg_catalog.pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = k.attnum
+JOIN pg_catalog.pg_attribute ra ON ra.attrelid = con.confrelid AND ra.attnum = k.refattnum
+WHERE con.contype = 'f'
+  AND n.nspname = current_schema()
+  AND cl.relname = $1
+ORDER BY con.conname, k.ord`, table)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var foreignKeys []ForeignKey
-	for rows.Next() {
-		var fk ForeignKey
-		if err := rows.Scan(&fk.Table, &fk.Column, &fk.RefTable, &fk.RefColumn); err != nil {
-			return nil, err
-		}
-		foreignKeys = append(foreignKeys, fk)
-	}
-
-	return foreignKeys, rows.Err()
+	return scanForeignKeyRows(rows)
 }
 
 type mysqlInspector struct{}
@@ -556,6 +624,7 @@ ORDER BY ordinal_position`, table)
 func (mysqlInspector) loadForeignKeys(ctx context.Context, db *sql.DB, table string) ([]ForeignKey, error) {
 	rows, err := db.QueryContext(ctx, `
 SELECT
+  constraint_name,
   table_name,
   column_name,
   referenced_table_name,
@@ -564,22 +633,13 @@ FROM information_schema.key_column_usage
 WHERE table_schema = DATABASE()
   AND table_name = ?
   AND referenced_table_name IS NOT NULL
-ORDER BY ordinal_position`, table)
+ORDER BY constraint_name, ordinal_position`, table)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var foreignKeys []ForeignKey
-	for rows.Next() {
-		var fk ForeignKey
-		if err := rows.Scan(&fk.Table, &fk.Column, &fk.RefTable, &fk.RefColumn); err != nil {
-			return nil, err
-		}
-		foreignKeys = append(foreignKeys, fk)
-	}
-
-	return foreignKeys, rows.Err()
+	return scanForeignKeyRows(rows)
 }
 
 func scanSingleStringColumn(rows *sql.Rows) ([]string, error) {
