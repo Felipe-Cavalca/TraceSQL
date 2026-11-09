@@ -36,6 +36,54 @@ jobs:
       - name: Test
         run: go test ./...
 
+  integration:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: tracesql
+          POSTGRES_PASSWORD: tracesql
+          POSTGRES_DB: postgres
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U tracesql"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ROOT_PASSWORD: tracesql
+        ports:
+          - 53306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -ptracesql --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      TRACESQL_TEST_PG_DSN: postgres://tracesql:tracesql@127.0.0.1:55432/postgres?sslmode=disable
+      TRACESQL_TEST_MYSQL_DSN: root:tracesql@tcp(127.0.0.1:53306)/
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+      - name: Cache Go modules
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: ${{ runner.os }}-go-
+      - name: Testes de integração (Postgres, MySQL e SQLite)
+        run: go test -tags integration ./...
+
   vulncheck:
     runs-on: ubuntu-latest
     steps:
@@ -52,17 +100,16 @@ jobs:
 
   notify:
     if: github.event_name == 'pull_request' && github.event_name != 'schedule' && github.actor != 'dependabot[bot]'
-    needs: [test]
+    needs: [test, integration]
     runs-on: ubuntu-latest
     steps:
       - name: Comentar status no PR
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
-            const conclusion = "${{ needs.test.result }}";
-            const ok = conclusion === "success";
+            const ok = "${{ needs.test.result }}" === "success" && "${{ needs.integration.result }}" === "success";
             const message = ok
-              ? "✅ CI: testes passaram em ubuntu/macos/windows."
+              ? "✅ CI: testes passaram em ubuntu/macos/windows e os testes de integração (Postgres, MySQL, SQLite) passaram."
               : "❌ CI: testes falharam. Veja os logs em Actions.";
             await github.rest.issues.createComment({
               owner: context.repo.owner,

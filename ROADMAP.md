@@ -42,7 +42,7 @@ O TraceSQL começou como um utilitário de terminal multiplataforma para exporta
 ## Testes
 - Testes unitários com `go test ./...`.
 - Cobertura voltada para configuração, prompts, metadata e exportação.
-- Evolução desejada: ampliar testes de integração com bancos reais ou containers dedicados.
+- Testes de integração com Postgres, MySQL e SQLite reais (tag `integration`, `docker-compose.test.yml`): veja `docs/TESTES.md`.
 
 ## Publicação
 - O workflow `Release` é disparado por `repository_dispatch`.

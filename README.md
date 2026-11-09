@@ -140,7 +140,7 @@ Os detalhes estão em [docs/SEGURANCA.md](docs/SEGURANCA.md).
 
 ## Desenvolvimento
 - Dev Container em `.devcontainer/` com Go 1.26, SQLite, clientes MySQL/Postgres e Docker socket para testes.
-- Testes automatizados: `go test ./...`.
+- Testes automatizados: `go test ./...` (SQLite) e `go test -tags integration ./...` com Postgres e MySQL reais; veja [docs/TESTES.md](docs/TESTES.md).
 
 ## Documentação
 - [docs/EXPORTACAO.md](docs/EXPORTACAO.md): como cada valor vira literal SQL, por tipo e por dialeto de saída.
