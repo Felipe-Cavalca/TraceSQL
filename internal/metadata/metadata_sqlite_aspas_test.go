@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"reflect"
 	"testing"
 
 	_ "modernc.org/sqlite"
@@ -65,10 +66,10 @@ func TestDiscoverSQLiteTabelaComAspasNoNome(t *testing.T) {
 				t.Fatalf("id deveria ser a chave primária: %+v", tabela.Columns)
 			}
 
-			esperada := ForeignKey{Table: c.filha, Column: "p_id", RefTable: c.pai, RefColumn: "id"}
+			esperada := ForeignKey{Table: c.filha, Columns: []string{"p_id"}, RefTable: c.pai, RefColumns: []string{"id"}}
 			achou = false
 			for _, fk := range catalog.ForeignKeys {
-				if fk == esperada {
+				if reflect.DeepEqual(fk, esperada) {
 					achou = true
 				}
 			}

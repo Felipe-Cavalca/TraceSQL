@@ -2,6 +2,7 @@ package metadata
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -22,9 +23,9 @@ func TestDiscoverPostgres(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"attname", "format_type", "is_nullable", "default_value", "is_primary_key", "is_auto_increment"}).
 			AddRow("id", "integer", false, "nextval('users_id_seq'::regclass)", true, true).
 			AddRow("name", "text", true, nil, false, false))
-	mock.ExpectQuery(`FROM information_schema\.table_constraints`).
+	mock.ExpectQuery(`FROM pg_catalog.pg_constraint`).
 		WithArgs("users").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "referenced_table_name", "referenced_column_name"}))
+		WillReturnRows(sqlmock.NewRows([]string{"constraint_name", "table_name", "column_name", "referenced_table_name", "referenced_column_name"}))
 
 	mock.ExpectQuery(`SELECT\s+a\.attname`).
 		WithArgs("orders").
@@ -32,10 +33,10 @@ func TestDiscoverPostgres(t *testing.T) {
 			AddRow("id", "integer", false, "nextval('orders_id_seq'::regclass)", true, true).
 			AddRow("user_id", "integer", false, nil, false, false).
 			AddRow("total", "integer", false, nil, false, false))
-	mock.ExpectQuery(`FROM information_schema\.table_constraints`).
+	mock.ExpectQuery(`FROM pg_catalog.pg_constraint`).
 		WithArgs("orders").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "referenced_table_name", "referenced_column_name"}).
-			AddRow("orders", "user_id", "users", "id"))
+		WillReturnRows(sqlmock.NewRows([]string{"constraint_name", "table_name", "column_name", "referenced_table_name", "referenced_column_name"}).
+			AddRow("orders_user_id_fkey", "orders", "user_id", "users", "id"))
 
 	catalog, err := Discover(context.Background(), db, "postgres")
 	if err != nil {
@@ -86,7 +87,7 @@ func TestDiscoverMySQL(t *testing.T) {
 			AddRow("name", "varchar(255)", "YES", "", ""))
 	mock.ExpectQuery(`FROM information_schema\.key_column_usage`).
 		WithArgs("users").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "referenced_table_name", "referenced_column_name"}))
+		WillReturnRows(sqlmock.NewRows([]string{"constraint_name", "table_name", "column_name", "referenced_table_name", "referenced_column_name"}))
 
 	mock.ExpectQuery(`FROM information_schema\.columns`).
 		WithArgs("orders").
@@ -96,8 +97,8 @@ func TestDiscoverMySQL(t *testing.T) {
 			AddRow("total", "int(11)", "NO", "", ""))
 	mock.ExpectQuery(`FROM information_schema\.key_column_usage`).
 		WithArgs("orders").
-		WillReturnRows(sqlmock.NewRows([]string{"table_name", "column_name", "referenced_table_name", "referenced_column_name"}).
-			AddRow("orders", "user_id", "users", "id"))
+		WillReturnRows(sqlmock.NewRows([]string{"constraint_name", "table_name", "column_name", "referenced_table_name", "referenced_column_name"}).
+			AddRow("orders_user_id_fkey", "orders", "user_id", "users", "id"))
 
 	catalog, err := Discover(context.Background(), db, "mysql")
 	if err != nil {
@@ -115,7 +116,7 @@ func TestDiscoverMySQL(t *testing.T) {
 	if len(catalog.ForeignKeys) != 1 {
 		t.Fatalf("esperava 1 foreign key, obtive %+v", catalog.ForeignKeys)
 	}
-	if catalog.ForeignKeys[0].Column != "user_id" || catalog.ForeignKeys[0].RefColumn != "id" {
+	if !reflect.DeepEqual(catalog.ForeignKeys[0].Columns, []string{"user_id"}) || !reflect.DeepEqual(catalog.ForeignKeys[0].RefColumns, []string{"id"}) {
 		t.Fatalf("foreign key inesperada: %+v", catalog.ForeignKeys[0])
 	}
 
@@ -151,7 +152,7 @@ func TestWithNameInferredForeignKeys(t *testing.T) {
 			},
 		},
 		ForeignKeys: []ForeignKey{
-			{Table: "audit_logs", Column: "user_id", RefTable: "users", RefColumn: "id"},
+			{Table: "audit_logs", Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{"id"}},
 		},
 	}
 
@@ -163,10 +164,10 @@ func TestWithNameInferredForeignKeys(t *testing.T) {
 		t.Fatalf("esperava 2 relações no total, obtive %+v", updated.ForeignKeys)
 	}
 
-	expected := ForeignKey{Table: "orders", Column: "user_id", RefTable: "users", RefColumn: "id"}
+	expected := ForeignKey{Table: "orders", Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{"id"}}
 	found := false
 	for _, fk := range updated.ForeignKeys {
-		if fk == expected {
+		if reflect.DeepEqual(fk, expected) {
 			found = true
 		}
 	}
@@ -200,8 +201,8 @@ func TestFilterTables(t *testing.T) {
 			},
 		},
 		ForeignKeys: []ForeignKey{
-			{Table: "orders", Column: "user_id", RefTable: "users", RefColumn: "id"},
-			{Table: "users_log", Column: "user_id", RefTable: "users", RefColumn: "id"},
+			{Table: "orders", Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{"id"}},
+			{Table: "users_log", Columns: []string{"user_id"}, RefTable: "users", RefColumns: []string{"id"}},
 		},
 	}
 
