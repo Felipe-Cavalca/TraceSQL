@@ -31,6 +31,8 @@ type Config struct {
 	Depth             *int
 	IgnoreTableSuffix string
 	Log               bool
+	NoProgress        bool
+	Quiet             bool
 
 	driverSet          bool
 	outputDriverSet    bool
@@ -65,6 +67,8 @@ func Default() Config {
 	depthRaw, _ := lookupEnv("TRACESQL_DEPTH")
 	ignoreTableSuffix, _ := lookupEnv("TRACESQL_IGNORE_TABLE_SUFFIX")
 	logRaw, logSet := lookupEnv("TRACESQL_LOG")
+	noProgressRaw, _ := lookupEnv("TRACESQL_NO_PROGRESS")
+	quietRaw, _ := lookupEnv("TRACESQL_QUIET")
 
 	return Config{
 		Driver:             driver,
@@ -82,6 +86,8 @@ func Default() Config {
 		Depth:              parseOptionalInt(depthRaw),
 		IgnoreTableSuffix:  strings.TrimSpace(ignoreTableSuffix),
 		Log:                parseBool(logRaw),
+		NoProgress:         parseBool(noProgressRaw),
+		Quiet:              parseBool(quietRaw),
 		driverSet:          driverSet,
 		outputDriverSet:    outputDriverSet,
 		dsnSet:             dsnSet,
@@ -121,6 +127,8 @@ func AttachFlags(cmd *cobra.Command, cfg Config) {
 	cmd.PersistentFlags().Int("depth", depthDefault, "Profundidade maxima das relacoes (omitido = ilimitado, 0 = so o registro base)")
 	cmd.PersistentFlags().String("ignore-table-suffix", cfg.IgnoreTableSuffix, "Ignora tabelas cujo nome termina com este sufixo (ex.: _log)")
 	cmd.PersistentFlags().Bool("log", cfg.Log, "Exibe logs de execucao no stderr")
+	cmd.PersistentFlags().Bool("no-progress", cfg.NoProgress, "Desliga o indicador de progresso (nao afeta as demais mensagens)")
+	cmd.PersistentFlags().Bool("quiet", cfg.Quiet, "Nao imprime nada em tela (sem progresso, logs e mensagens informativas); erros continuam no stderr")
 }
 
 // BindFlags aplica os valores das flags na config.
@@ -208,6 +216,8 @@ func BindFlags(cmd *cobra.Command, cfg *Config) error {
 		cfg.logSet = true
 	}
 	cfg.Log, _ = flags.GetBool("log")
+	cfg.NoProgress, _ = flags.GetBool("no-progress")
+	cfg.Quiet, _ = flags.GetBool("quiet")
 
 	return nil
 }
@@ -359,6 +369,23 @@ func (c *Config) EnsureDefaults() {
 	if c.OutputDriver == "" && c.Driver != "" {
 		c.OutputDriver = c.Driver
 	}
+}
+
+// LogEnabled informa se os logs de execucao devem sair no stderr.
+// --quiet tem prioridade sobre --log.
+func (c Config) LogEnabled() bool {
+	return c.Log && !c.Quiet
+}
+
+// InfoEnabled informa se mensagens informativas (como "Arquivo gerado") devem sair.
+func (c Config) InfoEnabled() bool {
+	return !c.Quiet
+}
+
+// ProgressEnabled aplica as regras de supressao do indicador de progresso:
+// so aparece em terminal e nunca com --quiet, --no-progress ou --log.
+func (c Config) ProgressEnabled(stderrIsTTY bool) bool {
+	return stderrIsTTY && !c.Quiet && !c.NoProgress && !c.Log
 }
 
 func (c Config) DriverProvided() bool {

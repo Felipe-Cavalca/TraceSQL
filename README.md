@@ -93,6 +93,8 @@ go run ./cmd/tracesql
 | `--depth` | Não | Limita quantos níveis de relações serão percorridos. Omitido = ilimitado, `0` = só o registro base, `1` = primeiro nível de pais/filhos. |
 | `--ignore-table-suffix` | Não | Ignora tabelas cujo nome termina com o sufixo informado, como `_log`. A tabela inicial continua sendo exportada mesmo que combine com o sufixo. |
 | `--log` | Não | Escreve logs de execução no `stderr`. |
+| `--no-progress` | Não | Desliga só o indicador de progresso. Logs e mensagens continuam. |
+| `--quiet` | Não | Não imprime nada em tela: sem progresso, sem logs e sem mensagens informativas (como `Arquivo gerado`). Erros continuam no `stderr`. |
 
 ## Variáveis de ambiente suportadas
 
@@ -114,6 +116,21 @@ O projeto carrega automaticamente um arquivo `.env` na raiz do repositório.
 | `TRACESQL_IGNORE_TABLE_SUFFIX` | Mesmo valor da flag `--ignore-table-suffix`. |
 | `TRACESQL_OUT` | Mesmo valor da flag `--out`. |
 | `TRACESQL_LOG` | Mesmo valor da flag `--log`. |
+| `TRACESQL_NO_PROGRESS` | Mesmo valor da flag `--no-progress`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
+| `TRACESQL_QUIET` | Mesmo valor da flag `--quiet`. Aceita `true`, `1`, `yes`, `sim` e equivalentes. |
+
+## Indicador de progresso
+
+Durante a exportação o TraceSQL mostra uma única linha, reescrita no mesmo lugar, com a fase, o contador e o tempo:
+
+```text
+Coletando relações... 1.240 linhas · 7 tabelas · 00:12
+```
+
+- Fases: lendo metadados, coletando relações, gerando SQL e gravando arquivo. Não há percentual, porque o total é desconhecido.
+- Sai no `stderr` e só aparece quando o `stderr` é um terminal. Em pipe, redirecionamento ou CI, não imprime nada.
+- Com `--log`, o progresso é suprimido (os logs já informam o andamento).
+- `--no-progress` (ou `TRACESQL_NO_PROGRESS`) desliga só o progresso. `--quiet` (ou `TRACESQL_QUIET`) desliga também logs e mensagens informativas; erros continuam no `stderr`. As perguntas interativas por dados faltantes não são afetadas.
 
 ## Saída gerada
 - Nome padrão: `export_<tabela>_<registro>.sql`.

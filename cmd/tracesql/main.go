@@ -12,6 +12,7 @@ import (
 	"github.com/Felipe-Cavalca/TraceSQL/internal/config"
 	"github.com/Felipe-Cavalca/TraceSQL/internal/db"
 	"github.com/Felipe-Cavalca/TraceSQL/internal/export"
+	"github.com/Felipe-Cavalca/TraceSQL/internal/progress"
 	"github.com/Felipe-Cavalca/TraceSQL/internal/prompt"
 )
 
@@ -20,7 +21,7 @@ func main() {
 
 	cfg := config.Default()
 	logf := func(format string, args ...interface{}) {
-		if !cfg.Log {
+		if !cfg.LogEnabled() {
 			return
 		}
 		fmt.Fprintf(os.Stderr, "[tracesql] "+format+"\n", args...)
@@ -70,19 +71,32 @@ func main() {
 			logf("conexão com banco aberta")
 
 			ctx := context.Background()
+			var reporter *progress.Reporter
+			if cfg.ProgressEnabled(progress.IsTTY(os.Stderr)) {
+				reporter = progress.Start(os.Stderr, progress.DefaultInterval)
+			}
+			// Stop é idempotente e apaga a linha, inclusive quando há erro.
+			defer reporter.Stop()
+			ctx = progress.WithReporter(ctx, reporter)
+
 			sqlDump, err := export.Run(ctx, database, cfg)
 			if err != nil {
 				return err
 			}
 			logf("exportação concluída, %d bytes gerados", len(sqlDump))
 
+			reporter.SetPhase(progress.PhaseWrite)
 			outPath := cfg.OutPath()
 			if err := os.WriteFile(outPath, []byte(sqlDump), 0o644); err != nil {
 				return fmt.Errorf("gravando arquivo %s: %w", outPath, err)
 			}
 			logf("arquivo gravado em %s", outPath)
 
-			fmt.Fprintf(os.Stdout, "Arquivo gerado: %s\n", outPath)
+			// Limpa a linha de progresso antes da mensagem final.
+			reporter.Stop()
+			if cfg.InfoEnabled() {
+				fmt.Fprintf(os.Stdout, "Arquivo gerado: %s\n", outPath)
+			}
 			return nil
 		},
 	}
